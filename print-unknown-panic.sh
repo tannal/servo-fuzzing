@@ -32,6 +32,7 @@ for file in $(ls $TESTCASE_DIRECTORY/*.txt); do
     sed -e "/assertion failed: parent_proxy.currently_active().is_some() (.\+components\/script\/dom\/window\/windowproxy.rs:[0-9]\+)$/,+3d" | # https://github.com/servo/servo/issues/49411
     sed -e "/called \`Option::unwrap()\` on a \`None\` value (.\+euclid-0.22.14\/src\/size.rs:[0-9]\+)$/,+3d" | # https://github.com/servo/servo/issues/46202
     sed -e "/called \`Option::unwrap()\` on a \`None\` value (.\+tiny-skia-path-0.12.0\/src\/alpha_run.rs:[0-9]\+)$/,+3d" | # https://github.com/servo/servo/issues/47335
+    sed -e "/called \`Option::unwrap()\` on a \`None\` value (.\+tiny-skia-path-0.12.0\/src\/rect.rs:[0-9]\+)$/,+3d" | # https://github.com/servo/servo/issues/46338
     grep -B5 -A10 'servoshell::panic_hook::panic_hook';
     if [ $? -eq 0 ]; then
         echo -n $file | sed "s/.txt//"
