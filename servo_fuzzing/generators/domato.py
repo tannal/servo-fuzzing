@@ -1,5 +1,3 @@
-"""Domato testcase generator wrapper."""
-
 from __future__ import annotations
 
 import subprocess
@@ -11,8 +9,6 @@ from .base import BaseGenerator
 
 
 class DomatoGenerator(BaseGenerator):
-    """Google Project Zero Domato DOM fuzzer generator."""
-
     def __init__(self, local_path: Optional[Path] = None):
         super().__init__(
             name="domato",
@@ -36,7 +32,5 @@ class DomatoGenerator(BaseGenerator):
             "-n",
             str(count),
         ]
-
         subprocess.run(cmd, check=True, cwd=str(self.local_path), capture_output=True)
-
         return sorted(list(output_dir.glob("*.html")))

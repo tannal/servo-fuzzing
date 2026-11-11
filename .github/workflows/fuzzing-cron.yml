@@ -2,7 +2,6 @@ name: Fuzzing Campaign & Maintenance (Cron)
 
 on:
   schedule:
-    # Run weekly on Sunday at 00:00 UTC
     - cron: '0 0 * * 0'
   workflow_dispatch:
 
@@ -17,6 +16,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          ref: main
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -24,8 +25,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install servo-fuzzing
-        run: |
-          pip install -e .[generators]
+        run: pip install -e .[generators]
 
       - name: Install Servoshell Runtime Dependencies
         run: |
@@ -41,8 +41,7 @@ jobs:
             libxkbcommon0
 
       - name: Download latest Servoshell
-        run: |
-          ./download-latest-nightly.sh
+        run: ./download-latest-nightly.sh
 
       - name: Prune Fixed/Closed Issues from Upstream
         env:
@@ -53,16 +52,13 @@ jobs:
             --archive signatures/fixed-history.json
 
       - name: Setup DOM Generators
-        run: |
-          servo-fuzzing setup-generators
+        run: servo-fuzzing setup-generators
 
       - name: Run Discovery & Exploration (Generate fresh test cases)
-        run: |
-          servo-fuzzing generate -n 100 -o target/generated
+        run: servo-fuzzing generate -n 100 -o target/generated
 
-      - name: Triage Generated Testcases & Auto-Reduce Panics
+      - name: Triage Generated Testcases
         run: |
-          # Run triage across freshly generated testcases
           servo-fuzzing run \
             --binary ./servo/servoshell \
             --signatures signatures/rust-panic.json \
@@ -70,29 +66,41 @@ jobs:
             --output target/triage \
             --timeout 2.0 || true
 
-          # If new panics occurred, auto-reduce them into testcases/corpus/
+      - name: Deduplicate, Minimize and Add New Panic Signatures
+        run: |
           if [ -d "target/triage/new_crashes" ]; then
-            for crash_dir in target/triage/new_crashes/*; do
-              if [ -d "$crash_dir" ]; then
-                crash_id=$(basename "$crash_dir")
-                echo "Minimizing crash $crash_id..."
-                repro_file=$(find "$crash_dir" -name "*.html" | head -n 1)
-                if [ -n "$repro_file" ]; then
-                  servo-fuzzing reduce "$repro_file" \
-                    --binary ./servo/servoshell \
-                    --output "testcases/corpus/crash-${crash_id}.html" \
-                    --timeout 2.0 || cp "$repro_file" "testcases/corpus/crash-${crash_id}.html"
-                fi
-              fi
-            done
+            servo-fuzzing sync-drafts \
+              --triage-dir target/triage \
+              --signatures signatures/rust-panic.json \
+              --corpus testcases/corpus \
+              --reduce-binary ./servo/servoshell \
+              --reduce-timeout 2.0
           fi
+
+      - name: Package New Panic Corpus
+        if: always()
+        run: |
+          if [ -d testcases/corpus ] && find testcases/corpus -name '*.html' -print -quit | grep -q .; then
+            tar -czf target/new-panic-corpus.tar.gz -C testcases/corpus .
+            echo "Packaged new panic corpus into target/new-panic-corpus.tar.gz"
+          fi
+
+      - name: Upload New Panic Corpus
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: new-panic-corpus
+          path: target/new-panic-corpus.tar.gz
+          if-no-files-found: ignore
 
       - name: Pack Clean Active Bundle (Excluding timeout hangs)
         run: |
           servo-fuzzing bundle pack \
             --source target/generated \
             --output target/fuzz-bundle-latest.tar.gz \
+            --from-triage target/triage \
             --binary ./servo/servoshell \
+            --jobs 4 \
             --timeout 2.0 \
             --max-tests 300
 
@@ -102,24 +110,65 @@ jobs:
           name: fuzz-bundle-latest
           path: target/fuzz-bundle-latest.tar.gz
 
-      - name: Publish Latest Bundle to GitHub Releases
+      - name: Publish Latest Bundle & Panic Corpus to GitHub Releases
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Publish or update the 'latest' release asset for ./mach test-fuzzing
-          gh release upload latest target/fuzz-bundle-latest.tar.gz --clobber || \
-          gh release create latest target/fuzz-bundle-latest.tar.gz \
-            --title "Latest Clean Replay Bundle" \
-            --notes "Automated clean fuzzing bundle with hangs and timeouts filtered out."
+          ASSETS="target/fuzz-bundle-latest.tar.gz"
+          if [ -f target/new-panic-corpus.tar.gz ]; then
+            ASSETS="$ASSETS target/new-panic-corpus.tar.gz"
+          fi
+          gh release upload latest $ASSETS --clobber || \
+          gh release create latest $ASSETS \
+            --title "Latest Fuzzing Bundle & Panic Corpus" \
+            --notes "Automated clean fuzzing bundle for PR CI and latest panic reproducers corpus."
 
-      - name: Commit Updated Signatures & Corpus
-        uses: peter-evans/create-pull-request@v6
+      - name: Publish Step Summary
+        if: always()
+        run: |
+          if [ -f "target/triage/report.md" ]; then
+            cat target/triage/report.md >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Upload Triage Reports & Reproductions
+        if: always()
+        uses: actions/upload-artifact@v4
         with:
-          commit-message: "chore(fuzzing): automated weekly maintenance and corpus update"
-          title: "chore: update fuzzing signatures and corpus"
+          name: triage-reports
+          path: target/triage
+
+      - name: Open Signatures & Corpus Pull Request
+        id: cpr
+        uses: peter-evans/create-pull-request@v6
+        continue-on-error: true
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          base: main
+          draft: false
+          add-paths: |
+            signatures/rust-panic.json
+            signatures/fixed-history.json
+            testcases/corpus/
+          commit-message: "chore(fuzzing): update panic signatures and minimized corpus"
+          title: "chore: update panic signatures and corpus from run ${{ github.run_id }}"
           body: |
             Automated maintenance run:
             - Pruned closed/fixed issues from `rust-panic.json` to `fixed-history.json`
-            - Refreshed clean active testcase bundle
-          branch: "automated/weekly-fuzz-update"
+            - Added deduplicated draft signatures to `signatures/rust-panic.json`
+            - Added deduplicated minimized testcases to `testcases/corpus/`
+
+            Source run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          branch: "automated/panic-signatures-${{ github.run_id }}"
           delete-branch: true
+
+      - name: Report Pull Request Status
+        if: always()
+        run: |
+          PR_URL="${{ steps.cpr.outputs.pull-request-url }}"
+          BRANCH="automated/panic-signatures-${{ github.run_id }}"
+          if [ -n "$PR_URL" ]; then
+            echo "### Pull Request Created: [$PR_URL]($PR_URL)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### Signatures and corpus updated on branch: \`$BRANCH\`" >> $GITHUB_STEP_SUMMARY
+            echo "[Click here to review and open the Pull Request on GitHub](https://github.com/${{ github.repository }}/pull/new/$BRANCH)" >> $GITHUB_STEP_SUMMARY
+          fi

@@ -1,5 +1,3 @@
-"""Generator management for Domato, Freedom, and Minerva."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -12,8 +10,6 @@ from .minerva import MinervaGenerator
 
 
 class GeneratorManager:
-    """Orchestrates testcase generators."""
-
     def __init__(
         self,
         generators_dir: Optional[Path] = None,
@@ -36,18 +32,12 @@ class GeneratorManager:
         }
 
     def clone_all(self) -> dict[str, bool]:
-        """Clone all generators that are not present."""
-        status = {}
-        for name, gen in self.generators.items():
-            if not gen.is_installed:
-                ok = gen.clone()
-                status[name] = ok
-            else:
-                status[name] = True
-        return status
+        return {
+            name: (True if gen.is_installed else gen.clone())
+            for name, gen in self.generators.items()
+        }
 
     def get_status(self) -> dict[str, dict[str, str | bool]]:
-        """Return status for all generators."""
         return {
             name: {
                 "installed": gen.is_installed,
@@ -63,7 +53,6 @@ class GeneratorManager:
         count_per_generator: int = 100,
         auto_clone: bool = False,
     ) -> dict[str, list[Path]]:
-        """Run all generators to produce testcases (e.g. 100 x 3 = 300 testcases)."""
         output_dir = Path(output_dir).resolve()
         results: dict[str, list[Path]] = {}
 

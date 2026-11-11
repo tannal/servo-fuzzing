@@ -1,5 +1,3 @@
-"""Minerva testcase generator wrapper."""
-
 from __future__ import annotations
 
 import os
@@ -12,8 +10,6 @@ from .base import BaseGenerator
 
 
 class MinervaGenerator(BaseGenerator):
-    """ChijinZ Minerva DOM fuzzer generator."""
-
     def __init__(self, local_path: Optional[Path] = None, mem_dep_json_path: Optional[Path] = None):
         super().__init__(
             name="minerva",
@@ -48,7 +44,7 @@ class MinervaGenerator(BaseGenerator):
         ]
 
         try:
-            res = subprocess.run(cmd, check=True, cwd=str(self.local_path), env=env, capture_output=True, text=True)
+            subprocess.run(cmd, check=True, cwd=str(self.local_path), env=env, capture_output=True, text=True)
         except subprocess.CalledProcessError as exc:
             err = exc.stderr.strip() if exc.stderr else str(exc)
             if "No module named 'cffi'" in err:

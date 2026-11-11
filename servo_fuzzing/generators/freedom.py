@@ -1,5 +1,3 @@
-"""Freedom testcase generator wrapper."""
-
 from __future__ import annotations
 
 import subprocess
@@ -11,8 +9,6 @@ from .base import BaseGenerator
 
 
 class FreedomGenerator(BaseGenerator):
-    """SSLab Gatech Freedom DOM fuzzer generator."""
-
     def __init__(self, local_path: Optional[Path] = None):
         super().__init__(
             name="freedom",
@@ -40,7 +36,5 @@ class FreedomGenerator(BaseGenerator):
             "-o",
             str(output_dir),
         ]
-
         subprocess.run(cmd, check=True, cwd=str(self.local_path), capture_output=True)
-
         return sorted(list(output_dir.glob("*.html")))
