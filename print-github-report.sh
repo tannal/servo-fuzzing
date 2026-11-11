@@ -1,9 +1,10 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-export PYTHONPATH="$DIR:$PYTHONPATH"
+export PYTHONPATH="$DIR:${PYTHONPATH:-}"
 
-if [ $# -lt 2 ] ; then
-    echo "Usage: $0 TESTCASE SERVO_BIN [SERVO_ARGS]"
+if [ $# -lt 2 ]; then
+    echo "Usage: $0 TESTCASE SERVO_BIN"
     exit 1
 fi
 

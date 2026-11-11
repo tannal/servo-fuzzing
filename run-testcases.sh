@@ -1,15 +1,14 @@
-#!/bin/bash
-set -e
+#!/usr/bin/env bash
+set -euo pipefail
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-export PYTHONPATH="$DIR:$PYTHONPATH"
+export PYTHONPATH="$DIR:${PYTHONPATH:-}"
 
-if [ $# -lt 2 ] ; then
+if [ $# -lt 2 ]; then
     echo "Usage: $0 TESTCASE_DIRECTORY SERVOSHELL_BIN [SERVO_EXTRA_ARGS]"
     exit 1
 fi
 
-TESTCASE_DIR=$1
 SERVOSHELL=$2
 shift 2
 

@@ -2,7 +2,6 @@ name: Sync B-fuzzing Signatures
 
 on:
   schedule:
-    # Daily at 06:00 UTC
     - cron: '0 6 * * *'
   workflow_dispatch:
 
@@ -16,31 +15,54 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
+        with:
+          ref: main
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: '3.11'
 
       - name: Install servo-fuzzing
-        run: |
-          pip install -e .
+        run: pip install -e .
 
       - name: Sync Signatures from servo/servo
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ""
+          GH_TOKEN: ""
         run: |
           servo-fuzzing sync-issues \
             --signatures signatures/rust-panic.json \
             --repo servo/servo
 
+      - name: Validate synchronized signatures
+        run: servo-fuzzing validate-signatures --signatures signatures/rust-panic.json
+
       - name: Create Pull Request on Changes
-        uses: peter-evans/create-pull-request@v6
+        id: signature-pr
+        uses: peter-evans/create-pull-request@v8
+        continue-on-error: true
         with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          base: main
+          draft: false
+          add-paths: signatures/rust-panic.json
           commit-message: "chore(signatures): sync B-fuzzing issues from servo/servo"
           title: "chore: update known fuzzing panic signatures"
           body: |
             Automated synchronization of open issues labelled `B-fuzzing` from `servo/servo`.
           branch: "automated/sync-fuzzing-signatures"
           delete-branch: true
+
+      - name: Publish synchronization summary
+        env:
+          PR_URL: ${{ steps.signature-pr.outputs.pull-request-url }}
+          PR_OPERATION: ${{ steps.signature-pr.outputs.pull-request-operation }}
+        run: |
+          if [ -n "$PR_URL" ]; then
+            echo "### Signature PR ($PR_OPERATION): [$PR_URL]($PR_URL)" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "### Signatures synchronized to branch \`automated/sync-fuzzing-signatures\`" >> "$GITHUB_STEP_SUMMARY"
+            echo "[Open Pull Request on GitHub](https://github.com/${{ github.repository }}/pull/new/automated/sync-fuzzing-signatures)" >> "$GITHUB_STEP_SUMMARY"
+          fi

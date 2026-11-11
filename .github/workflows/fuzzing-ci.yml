@@ -9,16 +9,19 @@ on:
     - cron: '0 2 * * *'
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   fuzzing:
     name: Headless DOM Fuzzing
     runs-on: ubuntu-latest
     steps:
       - name: Checkout servo/fuzzing
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: '3.11'
 
@@ -27,12 +30,25 @@ jobs:
           pip install -e .
 
       - name: Cache DOM Generators
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: generators/
           key: fuzzing-generators-${{ runner.os }}-${{ hashFiles('.gitmodules') }}
           restore-keys: |
             fuzzing-generators-${{ runner.os }}-
+
+      - name: Install Servoshell Runtime Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgstreamer1.0-0 \
+            libgstreamer-plugins-base1.0-0 \
+            libgstreamer-plugins-bad1.0-0 \
+            gstreamer1.0-plugins-base \
+            gstreamer1.0-plugins-good \
+            gstreamer1.0-plugins-bad \
+            gstreamer1.0-gl \
+            libxkbcommon0
 
       - name: Download latest Servoshell nightly (if not built in-tree)
         run: |
@@ -51,6 +67,28 @@ jobs:
             --signatures signatures/rust-panic.json \
             --output target/fuzzing
 
+      - name: Collect New Panic Corpus
+        if: always()
+        run: |
+          if [ -f target/fuzzing/summary.json ]; then
+            python -m servo_fuzzing.collect --input target/fuzzing --output target/panic-corpus
+          fi
+
+      - name: Package New Panic Corpus
+        if: always()
+        run: |
+          if [ -d target/panic-corpus ] && find target/panic-corpus -name '*.html' -print -quit | grep -q .; then
+            tar -czf target/new-panic-corpus.tar.gz -C target/panic-corpus .
+          fi
+
+      - name: Upload New Panic Corpus
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: new-panic-corpus
+          path: target/new-panic-corpus.tar.gz
+          if-no-files-found: ignore
+
       - name: Publish Test Summary
         if: always()
         run: |
@@ -60,7 +98,7 @@ jobs:
 
       - name: Upload Artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: fuzzing-artifacts
           path: target/fuzzing/
