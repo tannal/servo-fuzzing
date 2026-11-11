@@ -1,0 +1,203 @@
+name: Ingest, Triage & Deduplicate Crashes
+
+on:
+  workflow_dispatch:
+    inputs:
+      bundle_url:
+        description: 'Direct download URL to crashes archive (.tar.gz / .zip)'
+        required: false
+        default: ''
+        type: string
+      release_tag:
+        description: 'GitHub Release tag containing uploaded crashes archive'
+        required: false
+        default: 'incoming'
+        type: string
+      asset_name:
+        description: 'Asset name in the release (leave blank to download all)'
+        required: false
+        default: ''
+        type: string
+      max_tests:
+        description: 'Maximum number of testcases to triage'
+        required: false
+        default: '5000'
+        type: string
+      timeout:
+        description: 'Per-test timeout in seconds'
+        required: false
+        default: '2.0'
+        type: string
+      jobs:
+        description: 'Parallel execution workers'
+        required: false
+        default: '4'
+        type: string
+      reduce:
+        description: 'Auto-minimize unique panics via delta debugging'
+        required: false
+        default: true
+        type: boolean
+  release:
+    types: [published]
+  issues:
+    types: [opened, labeled]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  import-and-triage:
+    name: Import, Triage & Deduplicate
+    runs-on: ubuntu-latest
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'release' ||
+      (github.event_name == 'issues' && (contains(github.event.issue.labels.*.name, 'fuzz-import') || contains(github.event.issue.body, '/triage'))) ||
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '/triage'))
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          ref: main
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+
+      - name: Install servo-fuzzing
+        run: pip install -e .
+
+      - name: Install Servoshell Runtime Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgstreamer1.0-0 \
+            libgstreamer-plugins-base1.0-0 \
+            libgstreamer-plugins-bad1.0-0 \
+            gstreamer1.0-plugins-base \
+            gstreamer1.0-plugins-good \
+            gstreamer1.0-plugins-bad \
+            gstreamer1.0-gl \
+            libxkbcommon0
+
+      - name: Download latest Servoshell
+        run: ./download-latest-nightly.sh
+
+      - name: Locate or Download Crashes
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p target/import
+
+          # 1. From workflow_dispatch input URL
+          if [ -n "${{ inputs.bundle_url }}" ]; then
+            echo "Downloading crashes from input URL: ${{ inputs.bundle_url }}"
+            curl -fL "${{ inputs.bundle_url }}" -o target/import/crashes.tar.gz
+            exit 0
+          fi
+
+          # 2. From Drag-and-Drop Issue Attachment (Zero git, zero branches)
+          EVENT_TEXT="${{ github.event.comment.body || github.event.issue.body || '' }}"
+          if [ -n "$EVENT_TEXT" ]; then
+            FOUND_URL=$(echo "$EVENT_TEXT" | grep -oE 'https?://[a-zA-Z0-9./_~%-]+/(?:user-attachments/files|files)/[a-zA-Z0-9./_~%-]+|https?://[a-zA-Z0-9./_~%-]+\.(tar\.gz|zip|tgz|html)' | head -n 1 || true)
+            if [ -n "$FOUND_URL" ]; then
+              echo "Found uploaded file in issue description/comment: $FOUND_URL"
+              curl -fL "$FOUND_URL" -o target/import/crashes.tar.gz
+              exit 0
+            fi
+          fi
+
+          # 3. From Release (automatic on release publish, or workflow_dispatch fallback)
+          RELEASE_TAG="${{ github.event.release.tag_name || inputs.release_tag || 'incoming' }}"
+          echo "Attempting to download release asset(s) from release $RELEASE_TAG..."
+          if [ -n "${{ inputs.asset_name }}" ]; then
+            gh release download "$RELEASE_TAG" -p "${{ inputs.asset_name }}" -D target/import/ --clobber || true
+          else
+            gh release download "$RELEASE_TAG" -D target/import/ --clobber || true
+          fi
+
+          if [ "$(ls -A target/import 2>/dev/null)" ]; then
+            echo "Downloaded release asset(s) successfully into target/import."
+            exit 0
+          fi
+
+          echo "Notice: Checking target/import directory contents..."
+
+      - name: Run Triage, Deduplication & Minimization
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          REDUCE_OPT="--reduce"
+          if [ "${{ inputs.reduce }}" = "false" ]; then
+            REDUCE_OPT="--no-reduce"
+          fi
+
+          TIMEOUT_VAL="${{ inputs.timeout || '2.0' }}"
+          JOBS_VAL="${{ inputs.jobs || '4' }}"
+          MAX_VAL="${{ inputs.max_tests || '5000' }}"
+
+          servo-fuzzing import target/import \
+            --binary ./servo/servoshell \
+            --signatures signatures/rust-panic.json \
+            --corpus testcases/corpus \
+            --output target/triage \
+            --timeout "$TIMEOUT_VAL" \
+            --jobs "$JOBS_VAL" \
+            --max-tests "$MAX_VAL" \
+            --lookup-github \
+            $REDUCE_OPT
+
+      - name: Upload Triage Reports & Logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: triage-reports
+          path: target/triage
+          if-no-files-found: ignore
+
+      - name: Publish Step Summary
+        if: always()
+        run: |
+          if [ -f "target/triage/report.md" ]; then
+            cat target/triage/report.md >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Comment Triage Results on Issue
+        if: always() && (github.event_name == 'issues' || github.event_name == 'issue_comment')
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ -f "target/triage/report.md" ]; then
+            gh issue comment ${{ github.event.issue.number }} --body-file target/triage/report.md
+          fi
+
+      - name: Open Signatures & Minimized Corpus Pull Request
+        id: cpr
+        uses: peter-evans/create-pull-request@v8
+        continue-on-error: true
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          base: main
+          draft: false
+          add-paths: |
+            signatures/rust-panic.json
+            signatures/fixed-history.json
+            testcases/corpus/
+          commit-message: "feat(corpus): triage, deduplicate and add minimized reproducers"
+          title: "feat(corpus): triage and add minimized reproducers (run ${{ github.run_id }})"
+          body: |
+            Automated crash import, triage, and deduplication:
+            - Filtered out non-crashing tests, timeouts, and duplicate panics
+            - Auto-minimized unique reproducers via delta debugging into `testcases/corpus/`
+            - Generated clean, descriptive names (no hashes or opaque IDs)
+            - Added draft panic signatures to `signatures/rust-panic.json`
+
+            Workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          branch: automated/import-crashes-${{ github.run_id }}
+          delete-branch: true

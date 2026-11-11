@@ -95,6 +95,56 @@ stack backtrace:
         self.assertEqual(crash.line, 45)
         self.assertEqual(crash.thread, "Script#2")
 
+    def test_generate_descriptive_name(self):
+        from servo_fuzzing.parser import generate_descriptive_name
+
+        # 1. Unreachable with descriptive message
+        c1 = CrashInfo(
+            message="internal error: entered unreachable code: Found hoisted box with missing or non-BoxFragment.",
+            source_file="components/layout/display_list/stacking_context.rs:633",
+        )
+        name1 = generate_descriptive_name(c1)
+        self.assertIn("stacking-context", name1)
+        self.assertIn("hoisted-box", name1)
+        self.assertNotIn("internal-error", name1)
+        self.assertNotIn("panic-", name1)
+
+        # 2. Option unwrap on None
+        c2 = CrashInfo(
+            message="called `Option::unwrap()` on a `None` value",
+            source_file="tiny-skia-path-0.12.0/src/alpha_run.rs:88",
+        )
+        name2 = generate_descriptive_name(c2)
+        self.assertEqual(name2, "tiny-skia-path-alpha-run-unwrap-none")
+
+        # 3. Euclid crate unwrap
+        c3 = CrashInfo(
+            message="called `Option::unwrap()` on a `None` value",
+            source_file="euclid-0.22.14/src/size.rs:120",
+        )
+        name3 = generate_descriptive_name(c3)
+        self.assertEqual(name3, "euclid-size-unwrap-none")
+
+        # 4. Assertion failure expression
+        c4 = CrashInfo(
+            message="assertion failed: distance_to_stack_bottom <= max_allowable_distance",
+            source_file="components/script/dom/stack.rs:42",
+        )
+        name4 = generate_descriptive_name(c4)
+        self.assertIn("stack-distance", name4)
+        self.assertNotIn("assertion-failed", name4)
+
+    def test_normalize_panic_message(self):
+        from servo_fuzzing.parser import normalize_panic_message
+
+        m1 = normalize_panic_message("Bad Readback render task size: 1024x0")
+        m2 = normalize_panic_message("Bad Readback render task size: 512x0")
+        self.assertEqual(m1, m2)
+
+        idx1 = normalize_panic_message("range start index 2587205120000 out of range for slice of length 0")
+        idx2 = normalize_panic_message("range start index 128 out of range for slice of length 10")
+        self.assertEqual(idx1, idx2)
+
 
 if __name__ == "__main__":
     unittest.main()

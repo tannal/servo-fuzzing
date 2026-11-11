@@ -86,6 +86,32 @@ else:
         self.assertEqual(res.status, TestStatus.NEW_CRASH)
         self.assertIsNone(res.matched_signature_id)
 
+    def test_run_regression_from_fixed_history(self):
+        fixed_sigs: list[CrashSignature] = [
+            {
+                "id": "fixed-unexpected-panic",
+                "message": "assertion failed: unexpected_panic",
+                "source_file": "components/unexpected.rs",
+                "stack_frames": ["unexpected_frame"],
+                "issue": "https://github.com/servo/servo/issues/46109",
+            }
+        ]
+        summary = run_suite(
+            binary=f"python3 {self.mock_script.name}",
+            testcases=[Path("new.html")],
+            servo_args=[],
+            timeout=5.0,
+            concurrency=1,
+            signatures=self.signatures,
+            fixed_signatures=fixed_sigs,
+        )
+        self.assertEqual(summary.regressions, 1)
+        self.assertEqual(summary.new_crashes, 0)
+        self.assertFalse(summary.is_success)
+        self.assertTrue(summary.has_new_crashes)
+        self.assertEqual(summary.results[0].status, TestStatus.REGRESSION)
+        self.assertEqual(summary.results[0].matched_issue, "https://github.com/servo/servo/issues/46109")
+
     def test_run_timeout(self):
         res = run_single_test(
             binary=f"python3 {self.mock_script.name}",

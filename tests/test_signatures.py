@@ -13,6 +13,7 @@ from servo_fuzzing.signatures import (
     load_signatures,
     match,
     save_signatures,
+    sync_draft_signatures,
 )
 
 
@@ -126,6 +127,121 @@ class TestSignatures(unittest.TestCase):
         self.assertIsNotNone(by_issue)
         assert by_issue is not None
         self.assertEqual(by_issue["id"], "windowproxy-parent-active")
+
+    def test_sync_draft_signatures_deduplication(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            sigs_file = tmp / "rust-panic.json"
+            save_signatures(sigs_file, self.signatures)
+
+            triage_dir = tmp / "triage"
+            new_crashes = triage_dir / "new_crashes"
+            # Create 3 crash dirs, all with the SAME panic message and source file
+            for i in range(1, 4):
+                c_dir = new_crashes / f"crash_{i}"
+                c_dir.mkdir(parents=True)
+                (c_dir / f"test_{i}.html").write_text(f"<html>test {i}</html>")
+                draft = {
+                    "id": "stacking_context-hoisted-box",
+                    "message": "Found hoisted box with missing BoxFragment",
+                    "source_file": "components/layout/display_list/stacking_context.rs",
+                    "stack_frames": ["stacking_context"],
+                    "issue": "https://github.com/servo/servo/issues/TODO",
+                }
+                (c_dir / "signature_draft.json").write_text(json.dumps(draft))
+
+            corpus_dir = tmp / "corpus"
+            added = sync_draft_signatures(triage_dir, sigs_file, corpus_out_dir=corpus_dir)
+            # Only ONE signature should be added despite 3 crash dirs!
+            self.assertEqual(len(added), 1)
+            updated_sigs = load_signatures(sigs_file)
+            self.assertEqual(len(updated_sigs), len(self.signatures) + 1)
+            self.assertEqual(updated_sigs[-1]["message"], "Found hoisted box with missing BoxFragment")
+
+            # Only ONE reproducer html in corpus_dir
+            repros = list(corpus_dir.glob("*.html"))
+            self.assertEqual(len(repros), 1)
+
+    def test_sync_draft_signatures_detects_fixed_history_regression(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            sigs_file = tmp / "rust-panic.json"
+            history_file = tmp / "fixed-history.json"
+            save_signatures(sigs_file, self.signatures)
+            save_signatures(history_file, [
+                {
+                    "id": "stacking-context-hoisted-box-missing",
+                    "message": "internal error: entered unreachable code: Found hoisted box with missing or non-BoxFragment.",
+                    "source_file": "components/layout/display_list/stacking_context.rs",
+                    "stack_frames": ["stacking_context"],
+                    "issue": "https://github.com/servo/servo/issues/46109",
+                }
+            ])
+
+            triage_dir = tmp / "triage"
+            c_dir = triage_dir / "new_crashes" / "crash_1"
+            c_dir.mkdir(parents=True)
+            (c_dir / "test_1.html").write_text("<html>hoisted</html>")
+            (c_dir / "signature_draft.json").write_text(json.dumps({
+                "id": "stacking-context-hoisted-box-missing",
+                "message": "internal error: entered unreachable code: Found hoisted box with missing or non-BoxFragment.",
+                "source_file": "components/layout/display_list/stacking_context.rs",
+                "stack_frames": ["stacking_context"],
+                "issue": "https://github.com/servo/servo/issues/TODO",
+            }))
+
+            corpus_dir = tmp / "corpus"
+            added = sync_draft_signatures(
+                triage_dir,
+                sigs_file,
+                corpus_out_dir=corpus_dir,
+                fixed_history_path=history_file,
+            )
+            # Should NOT add a duplicate TODO signature to active rust-panic.json
+            self.assertEqual(len(added), 0)
+            self.assertEqual(len(load_signatures(sigs_file)), len(self.signatures))
+            # Reproducer is still saved under the historical signature ID
+            self.assertTrue((corpus_dir / "stacking-context-hoisted-box-missing.html").exists())
+
+    def test_sync_draft_signatures_links_upstream_closed_issue(self):
+        from unittest.mock import patch
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            sigs_file = tmp / "rust-panic.json"
+            history_file = tmp / "fixed-history.json"
+            save_signatures(sigs_file, self.signatures)
+            save_signatures(history_file, [])
+
+            triage_dir = tmp / "triage"
+            c_dir = triage_dir / "new_crashes" / "crash_1"
+            c_dir.mkdir(parents=True)
+            (c_dir / "test_1.html").write_text("<html>hoisted</html>")
+            (c_dir / "signature_draft.json").write_text(json.dumps({
+                "id": "stacking-context-hoisted-box-missing",
+                "message": "internal error: entered unreachable code: Found hoisted box with missing or non-BoxFragment.",
+                "source_file": "components/layout/display_list/stacking_context.rs",
+                "stack_frames": ["stacking_context"],
+                "issue": "https://github.com/servo/servo/issues/TODO",
+            }))
+
+            with patch("servo_fuzzing.github_sync.find_upstream_issue", return_value={
+                "url": "https://github.com/servo/servo/issues/46109",
+                "state": "closed",
+                "number": "46109",
+                "title": "Found hoisted box with missing or non-BoxFragment",
+            }):
+                added = sync_draft_signatures(
+                    triage_dir,
+                    sigs_file,
+                    fixed_history_path=history_file,
+                    lookup_github=True,
+                )
+
+            self.assertEqual(len(added), 0)
+            archived = load_signatures(history_file)
+            self.assertEqual(len(archived), 1)
+            self.assertEqual(archived[0]["issue"], "https://github.com/servo/servo/issues/46109")
 
 
 if __name__ == "__main__":

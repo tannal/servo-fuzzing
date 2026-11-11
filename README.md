@@ -10,33 +10,7 @@ This repository serves as a specialized test suite for Servo—analogous to Web 
 
 ### How It Works in Servo CI
 
-Servo integrates this repository directly into `./mach test-fuzzing` and GitHub Actions merge queue / PR workflows:
-
-```
-+-------------------------------------------------------------+
-|                      PR / Merge Queue                       |
-+-------------------------------------------------------------+
-                               |
-                               v
-               ./mach test-fuzzing --config ...
-                               |
-                               v
-            Execute testcases with headless servoshell
-                               |
-        +----------------------+----------------------+
-        |                                             |
-    No Crash                                     Crash Hit!
-        |                                             |
-     [ PASS ]                                         v
-                                  Match against signatures/rust-panic.json
-                                                      |
-                                       +--------------+--------------+
-                                       |                             |
-                                 Known Signature               New Crash!
-                                       |                             |
-                                  [ IGNORED ]                  [ BLOCKS PR ]
-                                  (Passes CI)           PR author investigates
-```
+Servo integrates this repository directly into `./mach test-fuzzing` and GitHub Actions merge queue / PR workflows.
 
 ### PR Gating Philosophy
 
@@ -50,43 +24,60 @@ Servo integrates this repository directly into `./mach test-fuzzing` and GitHub 
 
 ---
 
-## Integration with `./mach`
+## Quick Start for New Developers (After Building Servo)
 
-In Servo's `python/servo/testing_commands.py`:
+Once you have built `servoshell` locally (e.g. `../servo/target/debug/servoshell` or `release/servoshell`):
 
-```python
-@Command("test-fuzzing", description="Run local Servo fuzzing tests", category="testing")
-@CommandArgument("--config", required=True, help="Fuzzing suite configuration passed to servo-fuzzing")
-@CommandArgument("--output", help="Artifact directory (defaults to target/fuzzing)")
-@CommandBase.common_command_arguments(build_type=True, binary_selection=True)
-def test_fuzzing(
-    self,
-    servo_binary: str,
-    build_type: BuildType,
-    config: str,
-    output: str | None = None,
-    **kwargs: Any,
-) -> int:
-    ...
-    args = [
-        sys.executable,
-        "-m",
-        "servo_fuzzing.runner",
-        "--binary",
-        servo_binary,
-        "--config",
-        str(Path(config).resolve()),
-        "--signatures",
-        str(root / "tests/fuzzing/signatures/rust-panic.json"),
-        "--output",
-        output or str(root / "target/fuzzing"),
-    ]
-    return subprocess.call(args, env=env)
+### 1. Install `servo-fuzzing`
+```bash
+git clone https://github.com/tannal/servo-fuzzing.git
+cd servo-fuzzing
+pip install -e .
 ```
+
+### 2. Run `./mach test-fuzzing` (From Servo Checkout)
+```bash
+# Automatically downloads the latest clean bundle and checks against signatures/
+./mach test-fuzzing
+
+# Or specify a custom bundle URL / run:
+./mach test-fuzzing --bundle https://github.com/tannal/servo-fuzzing/releases/latest/download/fuzz-bundle-latest.tar.gz
+```
+
+### 3. Run Continuous Self-Hosted Fuzzing (`fuzz-continuous.sh`)
+```bash
+# Install DOM generators (domato, freedom, minerva)
+servo-fuzzing setup-generators
+
+# Run continuous generate -> replay -> collect loop against your built servoshell
+./fuzz-continuous.sh --binary ../servo/target/release/servoshell --jobs 4 --count 30
+```
+New panic inputs are saved to `testcases/corpus/`, with per-round reports in `target/campaign/`.
+
+### 4. Triage & Upload Found Crash HTMLs
+You can triage and minimize a directory or archive of raw crash HTMLs locally or via GitHub Actions:
+
+- **Local triage & minimization**:
+  ```bash
+  servo-fuzzing import ./crashes/ \
+    --binary ../servo/target/release/servoshell \
+    --signatures signatures/rust-panic.json \
+    --corpus testcases/corpus \
+    --lookup-github
+  ```
+- **Zero-git CI upload (GitHub Issue / Release / Manual Dispatch)**:
+  1. Archive your crash HTMLs (`tar -czf crashes.tar.gz crashes/`).
+  2. Open an issue on GitHub, drag-and-drop `crashes.tar.gz` into the issue body, and add the `fuzz-import` label (or comment `/triage`).
+  3. Or upload to a GitHub Release (`incoming`) / run **Ingest, Triage & Deduplicate Crashes** (`workflow_dispatch`).
+  4. CI automatically deduplicates, minimizes reproducers into `testcases/corpus/`, links existing open/closed Servo issues, flags historical regressions, and opens a PR.
+
+---
+
+## Integration with `./mach`
 
 Run locally:
 ```bash
-./mach test-fuzzing --config tests/fuzzing/configs/default.json
+./mach test-fuzzing --bundle https://github.com/tannal/servo-fuzzing/actions/runs/43194534865
 ```
 
 ---
@@ -126,9 +117,13 @@ servo-fuzzing sync-issues --signatures signatures/rust-panic.json --repo servo/s
 
 ---
 
-## Signature Database (`signatures/rust-panic.json`)
+## Signature Database (`signatures/rust-panic.json` & `signatures/fixed-history.json`)
 
-The signature database tracks open fuzzing panics. It uses conservative exact-message/file and ordered-stack matching:
+The harness separates **known open issues**, **upstream issue deduplication**, and **historical regression detection**:
+
+- **`signatures/rust-panic.json`**: Tracks **open** fuzzing panics. Matches are classified as `KNOWN_CRASH` and ignored in PR gating so unrelated pre-existing bugs do not block merges.
+- **`signatures/fixed-history.json`**: Tracks **closed/fixed** fuzzing panics. Matches are classified as `REGRESSION` (failing PR CI with a link to the previously closed issue).
+- **Upstream Issue Lookup (`--lookup-github`)**: During `import` / `sync-drafts`, new panics search `servo/servo` open and closed issues to link existing issues automatically instead of leaving `TODO`.
 
 ```json
 {
@@ -240,10 +235,14 @@ reduce_delta_lines("./servo/servoshell", Path("testcase.html"), target_message="
 
 Servo tracks fuzzing bugs using the [`B-fuzzing`](https://github.com/servo/servo/issues?q=state%3Aopen%20label%3A%22B-fuzzing%22) label.
 
-To synchronize local signatures with the latest open issues on GitHub:
+To synchronize local signatures with the latest open and closed `B-fuzzing` issues on GitHub:
 
 ```bash
-servo-fuzzing sync-issues --repo servo/servo --signatures signatures/rust-panic.json
+servo-fuzzing sync-issues \
+  --repo servo/servo \
+  --signatures signatures/rust-panic.json \
+  --history signatures/fixed-history.json \
+  --include-closed
 ```
 
 A scheduled GitHub Actions workflow (`.github/workflows/sync-signatures.yml`) runs daily to keep the signature database up to date.
@@ -263,6 +262,39 @@ The legacy shell scripts are retained and updated as wrappers around the modern 
 - `./reproduce.sh`: Tests reproducibility rate.
 
 ---
+
+
+
+
+## Collect new panic inputs
+
+Replay automatically preserves new Rust panic inputs in `<output>/corpus`, with
+logs, draft signatures, and provenance. This collects original inputs; it does
+not minimize, reproduce, ignore, or file issues for them.
+
+Collect a local run into your regression corpus:
+
+```sh
+python -m servo_fuzzing.collect --input ../servo/target/fuzzing --output testcases/corpus
+```
+
+Collect an existing GitHub Actions run:
+
+```sh
+gh run download RUN_ID --repo tannal/servo-fuzzing --name triage-reports --dir target/downloaded-triage
+python -m servo_fuzzing.collect --input target/downloaded-triage --output testcases/corpus
+```
+
+Use artifact `fuzzing-artifacts` for the ordinary CI workflow. Future runs also
+upload `new-panic-corpus`, already arranged for replay. Content hashes prevent
+identical HTML from being collected repeatedly. The summary selects only current
+NEW_CRASH results with a parsed panic signature, excluding stale folders and
+known crashes. Archived inputs work without the original CI filesystem. External
+resources not saved in the original report cannot be recovered by this tool.
+
+Latest bundles now refresh on each run. A valid cached archive remains a warned
+offline fallback if refreshing fails. Local bundle paths do not download.
+
 
 ## License
 
