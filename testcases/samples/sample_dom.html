@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html>
+<head><title>Fuzzing Sample 1</title></head>
+<body>
+  <div>Test element</div>
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      const el = document.createElement("p");
+      el.textContent = "Hello Servo";
+      document.body.appendChild(el);
+    });
+  </script>
+</body>
+</html>

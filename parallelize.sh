@@ -1,7 +1,7 @@
 #!/bin/bash
 
-COUNT=10
-TIMEOUT=2s
+COUNT=${COUNT:-10}
+TIMEOUT=${TIMEOUT:-2s}
 
 for i in $(seq 1 $COUNT); do
   $@ 2>&1 &

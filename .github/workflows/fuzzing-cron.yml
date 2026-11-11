@@ -1,0 +1,125 @@
+name: Fuzzing Campaign & Maintenance (Cron)
+
+on:
+  schedule:
+    # Run weekly on Sunday at 00:00 UTC
+    - cron: '0 0 * * 0'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  campaign:
+    name: Generate, Triage & Publish Bundle
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install servo-fuzzing
+        run: |
+          pip install -e .[generators]
+
+      - name: Install Servoshell Runtime Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgstreamer1.0-0 \
+            libgstreamer-plugins-base1.0-0 \
+            libgstreamer-plugins-bad1.0-0 \
+            gstreamer1.0-plugins-base \
+            gstreamer1.0-plugins-good \
+            gstreamer1.0-plugins-bad \
+            gstreamer1.0-gl \
+            libxkbcommon0
+
+      - name: Download latest Servoshell
+        run: |
+          ./download-latest-nightly.sh
+
+      - name: Prune Fixed/Closed Issues from Upstream
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          servo-fuzzing prune-closed \
+            --signatures signatures/rust-panic.json \
+            --archive signatures/fixed-history.json
+
+      - name: Setup DOM Generators
+        run: |
+          servo-fuzzing setup-generators
+
+      - name: Run Discovery & Exploration (Generate fresh test cases)
+        run: |
+          servo-fuzzing generate -n 100 -o target/generated
+
+      - name: Triage Generated Testcases & Auto-Reduce Panics
+        run: |
+          # Run triage across freshly generated testcases
+          servo-fuzzing run \
+            --binary ./servo/servoshell \
+            --signatures signatures/rust-panic.json \
+            --testcases target/generated \
+            --output target/triage \
+            --timeout 2.0 || true
+
+          # If new panics occurred, auto-reduce them into testcases/corpus/
+          if [ -d "target/triage/new_crashes" ]; then
+            for crash_dir in target/triage/new_crashes/*; do
+              if [ -d "$crash_dir" ]; then
+                crash_id=$(basename "$crash_dir")
+                echo "Minimizing crash $crash_id..."
+                repro_file=$(find "$crash_dir" -name "*.html" | head -n 1)
+                if [ -n "$repro_file" ]; then
+                  servo-fuzzing reduce "$repro_file" \
+                    --binary ./servo/servoshell \
+                    --output "testcases/corpus/crash-${crash_id}.html" \
+                    --timeout 2.0 || cp "$repro_file" "testcases/corpus/crash-${crash_id}.html"
+                fi
+              fi
+            done
+          fi
+
+      - name: Pack Clean Active Bundle (Excluding timeout hangs)
+        run: |
+          servo-fuzzing bundle pack \
+            --source target/generated \
+            --output target/fuzz-bundle-latest.tar.gz \
+            --binary ./servo/servoshell \
+            --timeout 2.0 \
+            --max-tests 300
+
+      - name: Upload Bundle Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-bundle-latest
+          path: target/fuzz-bundle-latest.tar.gz
+
+      - name: Publish Latest Bundle to GitHub Releases
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Publish or update the 'latest' release asset for ./mach test-fuzzing
+          gh release upload latest target/fuzz-bundle-latest.tar.gz --clobber || \
+          gh release create latest target/fuzz-bundle-latest.tar.gz \
+            --title "Latest Clean Replay Bundle" \
+            --notes "Automated clean fuzzing bundle with hangs and timeouts filtered out."
+
+      - name: Commit Updated Signatures & Corpus
+        uses: peter-evans/create-pull-request@v6
+        with:
+          commit-message: "chore(fuzzing): automated weekly maintenance and corpus update"
+          title: "chore: update fuzzing signatures and corpus"
+          body: |
+            Automated maintenance run:
+            - Pruned closed/fixed issues from `rust-panic.json` to `fixed-history.json`
+            - Refreshed clean active testcase bundle
+          branch: "automated/weekly-fuzz-update"
+          delete-branch: true

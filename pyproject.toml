@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "servo-fuzzing"
+version = "0.1.0"
+description = "Modern fuzzing integration and crash triage harness for the Servo browser engine"
+readme = "README.md"
+authors = [
+    { name = "Servo Project Developers" }
+]
+license = { text = "MIT" }
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Testing",
+]
+requires-python = ">=3.9"
+dependencies = []
+
+[project.optional-dependencies]
+generators = [
+    "cffi",
+]
+
+[project.scripts]
+servo-fuzzing = "servo_fuzzing.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["servo_fuzzing*"]

@@ -8,7 +8,7 @@ TMP_FILE_PREFIX=/tmp/servo-fuzzer-reproduce
 
 for i in $(seq 1 $REPEAT_COUNT); do
 
-  echo "$i/$REPEAT_COUNT: running $PARALELL_COUNT instances in parallel...";
+  echo "$i/$REPEAT_COUNT: running $PARALLEL_COUNT instances in parallel...";
 
   for j in $(seq 1 $PARALLEL_COUNT); do
     "${@:2}" &>$TMP_FILE_PREFIX-$i-$j &

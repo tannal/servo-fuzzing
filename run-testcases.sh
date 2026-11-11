@@ -1,35 +1,20 @@
 #!/bin/bash
+set -e
 
-BASE_ARGS=-xzf
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export PYTHONPATH="$DIR:$PYTHONPATH"
+
 if [ $# -lt 2 ] ; then
     echo "Usage: $0 TESTCASE_DIRECTORY SERVOSHELL_BIN [SERVO_EXTRA_ARGS]"
     exit 1
-else
-    TESTCASE_DIRECTORY=$1
-    SERVOSHELL_BIN_AND_ARGS=${@:2}
 fi
 
-# Try running servo with arguments and about:blank to catch any issue early.
-$SERVOSHELL_BIN_AND_ARGS $BASE_ARGS about:blank || exit
+TESTCASE_DIR=$1
+SERVOSHELL=$2
+shift 2
 
-# Run all the testcases in parallel and collect the output.
-TIMEOUT=5s
-for t in $(ls $TESTCASE_DIRECTORY/*.html); do
-    echo "Running" $t
-    RUST_BACKTRACE=1 $SERVOSHELL_BIN_AND_ARGS -xfz $t > $t.txt 2>&1 &
-done
-sleep $TIMEOUT
-
-echo
-echo "Timout of $TIMEOUT reached, killing all running instances..."
-list_descendants ()
-{
-  local children=$(ps -o pid= --ppid "$1")
-  for pid in $children; do list_descendants "$pid"; done
-  echo "$children"
-}
-kill $(list_descendants $$) > /dev/null 2>&1
-
-echo
-echo "Unknown panic messages:"
-./print-unknown-panic.sh $TESTCASE_DIRECTORY
+python3 -m servo_fuzzing.runner \
+    --binary "$SERVOSHELL" \
+    --config "$DIR/configs/default.json" \
+    --signatures "$DIR/signatures/rust-panic.json" \
+    --output "$DIR/target/fuzzing"

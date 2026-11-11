@@ -1,0 +1,23 @@
+{
+  "test_dirs": [
+    "testcases"
+  ],
+  "test_extensions": [
+    ".html",
+    ".htm"
+  ],
+  "timeout_seconds": 5.0,
+  "concurrency": 4,
+  "servo_args": [
+    "-xfz",
+    "--enable-experimental-web-platform-features"
+  ],
+  "generators": {
+    "enabled": false,
+    "count_per_generator": 100,
+    "domato_path": "generators/domato",
+    "freedom_path": "generators/freedom",
+    "minerva_path": "generators/minerva",
+    "minerva_mem_dep": "generators/minerva/mod_ref_helper/mem_dep.json"
+  }
+}
