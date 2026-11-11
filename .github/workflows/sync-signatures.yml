@@ -17,6 +17,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          ref: main
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -38,6 +40,10 @@ jobs:
       - name: Create Pull Request on Changes
         uses: peter-evans/create-pull-request@v6
         with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          base: main
+          draft: true
+          add-paths: signatures/rust-panic.json
           commit-message: "chore(signatures): sync B-fuzzing issues from servo/servo"
           title: "chore: update known fuzzing panic signatures"
           body: |

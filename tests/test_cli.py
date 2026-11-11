@@ -64,6 +64,30 @@ class TestCLI(unittest.TestCase):
         ])
         self.assertEqual(code, 1)
 
+    def test_reduce_cli_with_signature(self):
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            testcase = Path(tmp_dir) / "test.html"
+            testcase.write_text("crash line\n", encoding="utf-8")
+            sig_file = Path(tmp_dir) / "draft.json"
+            sig_file.write_text('{"id": "foo-panic", "message": "unreachable code"}', encoding="utf-8")
+            binary = Path(tmp_dir) / "fake_servo"
+            binary.write_text("#!/bin/sh\nexit 0\n")
+            binary.chmod(0o755)
+
+            with patch("servo_fuzzing.cli.reduce_delta_lines") as mock_reduce:
+                mock_reduce.return_value = Path(tmp_dir) / "reduced.html"
+                code = cli_main([
+                    "reduce",
+                    str(testcase),
+                    "--binary", str(binary),
+                    "--signature", str(sig_file),
+                ])
+                self.assertEqual(code, 0)
+                mock_reduce.assert_called_once()
+                call_kwargs = mock_reduce.call_args[1]
+                self.assertEqual(call_kwargs["target_signature"], {"id": "foo-panic", "message": "unreachable code"})
+
     def test_bundle_cli_pack_and_unpack(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             src = Path(tmp_dir) / "src"

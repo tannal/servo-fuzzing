@@ -9,6 +9,9 @@ on:
     - cron: '0 2 * * *'
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   fuzzing:
     name: Headless DOM Fuzzing
@@ -50,6 +53,28 @@ jobs:
             --config configs/ci.json \
             --signatures signatures/rust-panic.json \
             --output target/fuzzing
+
+      - name: Collect New Panic Corpus
+        if: always()
+        run: |
+          if [ -f target/fuzzing/summary.json ]; then
+            python -m servo_fuzzing.collect --input target/fuzzing --output target/panic-corpus
+          fi
+
+      - name: Package New Panic Corpus
+        if: always()
+        run: |
+          if [ -d target/panic-corpus ] && find target/panic-corpus -name '*.html' -print -quit | grep -q .; then
+            tar -czf target/new-panic-corpus.tar.gz -C target/panic-corpus .
+          fi
+
+      - name: Upload New Panic Corpus
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: new-panic-corpus
+          path: target/new-panic-corpus.tar.gz
+          if-no-files-found: ignore
 
       - name: Publish Test Summary
         if: always()

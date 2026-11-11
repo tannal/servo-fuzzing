@@ -284,6 +284,11 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     # Write output artifacts
     write_artifacts(summary, output_dir=output_dir, servo_version=servo_version)
+    # Preserve new panic inputs with the same collector used for CI artifacts.
+    from .collect import collect_panics
+    collected = collect_panics(output_dir, output_dir / "corpus")
+    if collected:
+        print(f"Saved {collected} new panic testcase(s) to {output_dir / 'corpus'}")
     print_cli_summary(summary)
 
     if summary.has_new_crashes:
