@@ -1,0 +1,9 @@
+<!DOCTYPE html>
+<body onload="iframe.srcdoc = ''">
+<img onerror="window.location.reload()" src="https://www.igalia.com/404"></img>
+<iframe id="iframe" sandbox></iframe>
+<script>
+// If race condition does not trigger panic, exit cleanly to avoid infinite loop
+setTimeout(() => window.close(), 1500);
+</script>
+</body>

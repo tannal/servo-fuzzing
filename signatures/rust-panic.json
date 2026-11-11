@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "signatures": [
+    {
+      "id": "windowproxy-parent-active",
+      "message": "assertion failed: parent_proxy.currently_active().is_some()",
+      "source_file": "components/script/dom/window/windowproxy.rs",
+      "stack_frames": [
+        "<script::dom::servoparser::ParserContext>::initialize_document_object"
+      ],
+      "issue": "https://github.com/servo/servo/issues/49411"
+    },
+    {
+      "id": "euclid-size-unwrap-none",
+      "message": "called `Option::unwrap()` on a `None` value",
+      "source_file": "euclid-0.22.14/src/size.rs",
+      "stack_frames": [
+        "euclid::size"
+      ],
+      "issue": "https://github.com/servo/servo/issues/46202"
+    },
+    {
+      "id": "tiny-skia-alpha-run-unwrap-none",
+      "message": "called `Option::unwrap()` on a `None` value",
+      "source_file": "tiny-skia-path-0.12.0/src/alpha_run.rs",
+      "stack_frames": [
+        "tiny_skia_path"
+      ],
+      "issue": "https://github.com/servo/servo/issues/47335"
+    },
+    {
+      "id": "tiny-skia-rect-unwrap-none",
+      "message": "called `Option::unwrap()` on a `None` value",
+      "source_file": "tiny-skia-path-0.12.0/src/rect.rs",
+      "stack_frames": [
+        "tiny_skia_path"
+      ],
+      "issue": "https://github.com/servo/servo/issues/46338"
+    }
+  ]
+}

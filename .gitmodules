@@ -1,0 +1,9 @@
+[submodule "generators/domato"]
+	path = generators/domato
+	url = https://github.com/googleprojectzero/domato.git
+[submodule "generators/freedom"]
+	path = generators/freedom
+	url = https://github.com/sslab-gatech/freedom.git
+[submodule "generators/minerva"]
+	path = generators/minerva
+	url = https://github.com/ChijinZ/Minerva.git

@@ -1,0 +1,46 @@
+name: Sync B-fuzzing Signatures
+
+on:
+  schedule:
+    # Daily at 06:00 UTC
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    name: Sync GitHub B-fuzzing Issues
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install servo-fuzzing
+        run: |
+          pip install -e .
+
+      - name: Sync Signatures from servo/servo
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          servo-fuzzing sync-issues \
+            --signatures signatures/rust-panic.json \
+            --repo servo/servo
+
+      - name: Create Pull Request on Changes
+        uses: peter-evans/create-pull-request@v6
+        with:
+          commit-message: "chore(signatures): sync B-fuzzing issues from servo/servo"
+          title: "chore: update known fuzzing panic signatures"
+          body: |
+            Automated synchronization of open issues labelled `B-fuzzing` from `servo/servo`.
+          branch: "automated/sync-fuzzing-signatures"
+          delete-branch: true

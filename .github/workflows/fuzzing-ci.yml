@@ -1,0 +1,66 @@
+name: Servo Fuzzing CI
+
+on:
+  pull_request:
+    branches: [main]
+  merge_group:
+  schedule:
+    # Run nightly at 02:00 UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+jobs:
+  fuzzing:
+    name: Headless DOM Fuzzing
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout servo/fuzzing
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install servo-fuzzing
+        run: |
+          pip install -e .
+
+      - name: Cache DOM Generators
+        uses: actions/cache@v4
+        with:
+          path: generators/
+          key: fuzzing-generators-${{ runner.os }}-${{ hashFiles('.gitmodules') }}
+          restore-keys: |
+            fuzzing-generators-${{ runner.os }}-
+
+      - name: Download latest Servoshell nightly (if not built in-tree)
+        run: |
+          ./download-latest-nightly.sh
+
+      - name: Validate signature database
+        run: |
+          servo-fuzzing validate-signatures --signatures signatures/rust-panic.json
+
+      - name: Run Fuzzing Suite
+        id: run-fuzzing
+        run: |
+          servo-fuzzing run \
+            --binary ./servo/servoshell \
+            --config configs/ci.json \
+            --signatures signatures/rust-panic.json \
+            --output target/fuzzing
+
+      - name: Publish Test Summary
+        if: always()
+        run: |
+          if [ -f target/fuzzing/report.md ]; then
+            cat target/fuzzing/report.md >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Upload Artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzzing-artifacts
+          path: target/fuzzing/
