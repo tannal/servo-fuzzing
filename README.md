@@ -264,6 +264,39 @@ The legacy shell scripts are retained and updated as wrappers around the modern 
 
 ---
 
+
+
+
+## Collect new panic inputs
+
+Replay automatically preserves new Rust panic inputs in `<output>/corpus`, with
+logs, draft signatures, and provenance. This collects original inputs; it does
+not minimize, reproduce, ignore, or file issues for them.
+
+Collect a local run into your regression corpus:
+
+```sh
+python -m servo_fuzzing.collect --input ../servo/target/fuzzing --output testcases/corpus
+```
+
+Collect an existing GitHub Actions run:
+
+```sh
+gh run download RUN_ID --repo tannal/servo-fuzzing --name triage-reports --dir target/downloaded-triage
+python -m servo_fuzzing.collect --input target/downloaded-triage --output testcases/corpus
+```
+
+Use artifact `fuzzing-artifacts` for the ordinary CI workflow. Future runs also
+upload `new-panic-corpus`, already arranged for replay. Content hashes prevent
+identical HTML from being collected repeatedly. The summary selects only current
+NEW_CRASH results with a parsed panic signature, excluding stale folders and
+known crashes. Archived inputs work without the original CI filesystem. External
+resources not saved in the original report cannot be recovered by this tool.
+
+Latest bundles now refresh on each run. A valid cached archive remains a warned
+offline fallback if refreshing fails. Local bundle paths do not download.
+
+
 ## License
 
 This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.

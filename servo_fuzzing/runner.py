@@ -1,8 +1,3 @@
-"""Mach runner entrypoint for Servo fuzzing.
-
-Invoked via `./mach test-fuzzing` or `python -m servo_fuzzing.runner`.
-"""
-
 from __future__ import annotations
 
 import argparse
@@ -10,7 +5,6 @@ import json
 import os
 import subprocess
 import sys
-import time
 from pathlib import Path
 from typing import Any, Optional
 
@@ -20,7 +14,6 @@ from .signatures import load_signatures
 
 
 def load_config(config_path: Path) -> dict[str, Any]:
-    """Load configuration from JSON or TOML."""
     if not config_path.exists():
         raise FileNotFoundError(f"Configuration file not found: {config_path}")
 
@@ -28,33 +21,25 @@ def load_config(config_path: Path) -> dict[str, Any]:
     if config_path.suffix.lower() == ".json":
         return json.loads(text)
 
-    # If python 3.11+ tomllib is available
     try:
-        import tomllib  # type: ignore
-
+        import tomllib
         return tomllib.loads(text)
     except ImportError:
         pass
 
     try:
-        import tomli  # type: ignore
-
+        import tomli
         return tomli.loads(text)
     except ImportError:
         pass
 
-    # Fallback to json if json content in toml or raise informative error
     try:
         return json.loads(text)
     except Exception:
-        raise ValueError(
-            f"Config file {config_path} is TOML but neither tomllib nor tomli is installed. "
-            "Please use a JSON config (e.g. config.json) or install tomli."
-        )
+        raise ValueError(f"Config file {config_path} could not be parsed as JSON or TOML.")
 
 
 def collect_testcases(test_dirs: list[str | Path], extensions: list[str]) -> list[Path]:
-    """Find all matching test case files inside given directories."""
     found: list[Path] = []
     seen = set()
 
@@ -79,7 +64,6 @@ def collect_testcases(test_dirs: list[str | Path], extensions: list[str]) -> lis
 
 
 def get_servo_version(binary: Path) -> str:
-    """Query servoshell version string."""
     try:
         res = subprocess.run([str(binary), "--version"], capture_output=True, text=True, timeout=5)
         return res.stdout.strip() or res.stderr.strip() or "unknown"
@@ -94,19 +78,19 @@ def parse_args(args: Optional[list[str]] = None) -> argparse.Namespace:
     )
     parser.add_argument("--binary", required=True, help="Path to servoshell binary")
     parser.add_argument("--config", default=None, help="Path to config file (.json or .toml)")
-    parser.add_argument("--signatures", default=None, help="Path to rust-panic.json signatures file (auto-detected if omitted)")
+    parser.add_argument("--signatures", default=None, help="Path to rust-panic.json signatures file")
     parser.add_argument("--output", default="target/fuzzing", help="Artifacts directory (default: target/fuzzing)")
-    parser.add_argument("--testcases", nargs="*", default=None, help="Direct testcase directories or HTML files to replay")
+    parser.add_argument("--testcases", nargs="*", default=None, help="Direct testcase directories or HTML files")
     parser.add_argument("--bundle", default=None, help="Path or URL to testcase bundle (.tar.gz)")
-    parser.add_argument("--force-download", action="store_true", help="Force re-downloading the latest bundle ignoring cache")
-    parser.add_argument("-j", "--jobs", type=int, default=None, help="Number of parallel workers (overrides config)")
-    parser.add_argument("--timeout", type=float, default=None, help="Timeout in seconds per test (overrides config)")
-    parser.add_argument("--generate", action="store_true", help="Generate fresh testcases before running (discovery mode)")
-    parser.add_argument("--generate-count", type=int, default=100, help="Testcase count per generator (default: 100)")
-    parser.add_argument("--auto-clone", action="store_true", default=None, help="Automatically clone missing generators")
-    parser.add_argument("--no-auto-clone", action="store_false", dest="auto_clone", help="Disable automatic generator cloning")
-    parser.add_argument("--dry-run", action="store_true", help="Load configuration and validate without running tests")
-    parser.add_argument("positional_testcases", nargs="*", default=[], help="Optional positional test files or directories")
+    parser.add_argument("--force-download", action="store_true", help="Force re-downloading bundle")
+    parser.add_argument("-j", "--jobs", type=int, default=None, help="Number of parallel workers")
+    parser.add_argument("--timeout", type=float, default=None, help="Timeout in seconds per test")
+    parser.add_argument("--generate", action="store_true", help="Generate fresh testcases before running")
+    parser.add_argument("--generate-count", type=int, default=100, help="Testcase count per generator")
+    parser.add_argument("--auto-clone", action="store_true", default=None, help="Auto clone missing generators")
+    parser.add_argument("--no-auto-clone", action="store_false", dest="auto_clone", help="Disable auto cloning")
+    parser.add_argument("--dry-run", action="store_true", help="Validate configuration without running")
+    parser.add_argument("positional_testcases", nargs="*", default=[], help="Optional test files or directories")
 
     return parser.parse_args(args)
 
@@ -123,14 +107,12 @@ def main(argv: Optional[list[str]] = None) -> int:
     if args.signatures:
         signatures_path = Path(args.signatures).resolve()
     else:
-        # Search candidate locations
         repo_root = Path(__file__).resolve().parent.parent
-        candidates = [
+        for cand in [
             Path.cwd() / "tests" / "fuzzing" / "signatures" / "rust-panic.json",
             Path.cwd() / "signatures" / "rust-panic.json",
             repo_root / "signatures" / "rust-panic.json",
-        ]
-        for cand in candidates:
+        ]:
             if cand.exists():
                 signatures_path = cand.resolve()
                 break
@@ -140,9 +122,8 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     config: dict[str, Any] = {}
     if args.config:
-        config_path = Path(args.config).resolve()
         try:
-            config = load_config(config_path)
+            config = load_config(Path(args.config).resolve())
         except Exception as exc:
             print(f"Error loading configuration: {exc}")
             return 2
@@ -168,9 +149,9 @@ def main(argv: Optional[list[str]] = None) -> int:
     if args.testcases:
         test_dirs.extend(args.testcases)
 
-    if not test_dirs and args.bundle:
-        from .bundle import obtain_bundle, unpack_bundle
+    from .bundle import obtain_bundle, unpack_bundle
 
+    if not test_dirs and args.bundle:
         bundle_tar = obtain_bundle(bundle_spec=args.bundle, force_download=args.force_download)
         if bundle_tar:
             bundle_target = output_dir / "bundle"
@@ -182,9 +163,6 @@ def main(argv: Optional[list[str]] = None) -> int:
     elif not test_dirs and "test_dirs" in config:
         test_dirs.extend(config["test_dirs"])
     elif not test_dirs:
-        # Default behavior: automatically resolve and use the latest release bundle
-        from .bundle import obtain_bundle, unpack_bundle
-
         print("No testcases specified. Automatically resolving latest bundle from GitHub Releases...")
         bundle_tar = obtain_bundle(bundle_spec="latest", force_download=args.force_download)
         if bundle_tar:
@@ -202,18 +180,12 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     extensions = config.get("test_extensions", [".html", ".htm"])
 
-    # Optional test generation step (Discovery mode only)
     gen_config = config.get("generators", {})
-    should_generate = args.generate or gen_config.get("enabled", False)
-    if should_generate:
+    if args.generate or gen_config.get("enabled", False):
         from .generators import GeneratorManager
 
         count = args.generate_count or gen_config.get("count_per_generator", 100)
-        auto_clone = (
-            args.auto_clone
-            if args.auto_clone is not None
-            else gen_config.get("auto_clone", True)
-        )
+        auto_clone = args.auto_clone if args.auto_clone is not None else gen_config.get("auto_clone", True)
         gen_out = output_dir / "generated"
         print(f"\n--- Generating test cases ({count} per tool) ---")
         gen_mgr = GeneratorManager(
@@ -223,8 +195,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             minerva_mem_dep=Path(gen_config.get("minerva_mem_dep")) if gen_config.get("minerva_mem_dep") else None,
         )
         results = gen_mgr.generate_all(output_dir=gen_out, count_per_generator=count, auto_clone=auto_clone)
-        total_gen = sum(len(c) for c in results.values())
-        print(f"Total generated: {total_gen} test cases across {len(results)} generators.\n")
+        print(f"Total generated: {sum(len(c) for c in results.values())} test cases across {len(results)} generators.\n")
         test_dirs.append(gen_out)
 
     testcases = collect_testcases(test_dirs, extensions)
@@ -238,7 +209,6 @@ def main(argv: Optional[list[str]] = None) -> int:
         print("Dry run requested. Configuration and signatures are valid.")
         return 0
 
-    # 1. Health check: verify servoshell can start about:blank
     print(f"\nPerforming health check: {binary_path} {servo_args} about:blank ...")
     health_result = run_single_test(
         binary=binary_path,
@@ -261,16 +231,16 @@ def main(argv: Optional[list[str]] = None) -> int:
         prefix = f"[{current:4d}/{total:4d}]"
         name = res.testcase.name
         if res.status == TestStatus.PASS:
-            print(f"{prefix} ✅ PASS        : {name} ({res.duration:.2f}s)")
+            print(f"{prefix} PASS        : {name} ({res.duration:.2f}s)")
         elif res.status == TestStatus.KNOWN_CRASH:
-            print(f"{prefix} ⚠️  KNOWN CRASH: {name} -> {res.matched_signature_id} ({res.duration:.2f}s)")
+            print(f"{prefix} KNOWN CRASH: {name} -> {res.matched_signature_id} ({res.duration:.2f}s)")
         elif res.status == TestStatus.NEW_CRASH:
             msg = res.crash_info.message if res.crash_info else "Unexpected exit"
-            print(f"{prefix} ❌ NEW CRASH  : {name} -> {msg} ({res.duration:.2f}s)")
+            print(f"{prefix} NEW CRASH  : {name} -> {msg} ({res.duration:.2f}s)")
         elif res.status == TestStatus.TIMEOUT:
-            print(f"{prefix} ⏱️  TIMEOUT    : {name} (> {timeout}s)")
+            print(f"{prefix} TIMEOUT    : {name} (> {timeout}s)")
         else:
-            print(f"{prefix} ⚠️  ERROR      : {name} ({res.error_message})")
+            print(f"{prefix} ERROR      : {name} ({res.error_message})")
 
     summary = run_suite(
         binary=binary_path,
@@ -282,8 +252,12 @@ def main(argv: Optional[list[str]] = None) -> int:
         on_result=on_result,
     )
 
-    # Write output artifacts
     write_artifacts(summary, output_dir=output_dir, servo_version=servo_version)
+
+    from .collect import collect_panics
+    collected = collect_panics(output_dir, output_dir / "corpus")
+    if collected:
+        print(f"Saved {collected} new panic testcase(s) to {output_dir / 'corpus'}")
     print_cli_summary(summary)
 
     if summary.has_new_crashes:

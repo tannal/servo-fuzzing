@@ -1,8 +1,3 @@
-"""Reproduction and flakiness estimation utilities.
-
-Modern replacement for repeat.sh, parallelize.sh, and reproduce.sh.
-"""
-
 from __future__ import annotations
 
 import os
@@ -18,8 +13,6 @@ from typing import Optional
 
 @dataclass
 class ReproduceStats:
-    """Statistics from reproducibility testing."""
-
     total_runs: int
     matched_runs: int
     reproducibility_rate: float
@@ -35,7 +28,6 @@ def run_single_instance(
     timeout: float = 2.0,
     env: Optional[dict[str, str]] = None,
 ) -> tuple[int, str]:
-    """Execute a single instance and return (exit_code, combined_output)."""
     run_env = os.environ.copy()
     run_env["RUST_BACKTRACE"] = "1"
     if env:
@@ -71,9 +63,8 @@ def repeat_test(
     servo_args: Optional[list[str]] = None,
     timeout: float = 5.0,
 ) -> list[tuple[int, str]]:
-    """Execute testcase sequentially `count` times."""
     args = servo_args if servo_args is not None else ["-xfz"]
-    cmd = [str(binary)] + args + [str(testcase)]
+    cmd = [str(binary), *args, str(testcase)]
     results = []
 
     for i in range(1, count + 1):
@@ -91,16 +82,13 @@ def parallelize_test(
     timeout: float = 2.0,
     servo_args: Optional[list[str]] = None,
 ) -> list[tuple[int, str]]:
-    """Execute testcase `count` times in parallel."""
     args = servo_args if servo_args is not None else ["-xfz"]
-    cmd = [str(binary)] + args + [str(testcase)]
+    cmd = [str(binary), *args, str(testcase)]
 
     print(f"Executing {count} instances in parallel (timeout {timeout}s)...")
     with ThreadPoolExecutor(max_workers=count) as pool:
         futures = [pool.submit(run_single_instance, cmd, timeout=timeout) for _ in range(count)]
-        results = [f.result() for f in futures]
-
-    return results
+        return [f.result() for f in futures]
 
 
 def estimate_reproducibility(
@@ -112,9 +100,8 @@ def estimate_reproducibility(
     timeout: float = 2.0,
     servo_args: Optional[list[str]] = None,
 ) -> ReproduceStats:
-    """Run `repeat_count` rounds of `parallel_count` parallel instances to estimate crash rate."""
     args = servo_args if servo_args is not None else ["-xfz"]
-    cmd = [str(binary)] + args + [str(testcase)]
+    cmd = [str(binary), *args, str(testcase)]
     regex = re.compile(pattern)
 
     start_time = time.perf_counter()
@@ -129,7 +116,7 @@ def estimate_reproducibility(
         with ThreadPoolExecutor(max_workers=parallel_count) as pool:
             futures = [pool.submit(run_single_instance, cmd, timeout=timeout) for _ in range(parallel_count)]
             for f in futures:
-                code, out = f.result()
+                _, out = f.result()
                 if regex.search(out):
                     matched_runs += 1
 

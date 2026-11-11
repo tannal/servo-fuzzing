@@ -1,8 +1,3 @@
-"""Testcase reduction utilities.
-
-Supports both Lithium-based reduction and line-based delta debugging.
-"""
-
 from __future__ import annotations
 
 import subprocess
@@ -22,24 +17,19 @@ def reduce_with_lithium(
     servo_args: Optional[list[str]] = None,
     timeout: int = 1,
 ) -> bool:
-    """Run Mozilla's Lithium reducer on a testcase."""
     args = servo_args if servo_args is not None else ["-xzf"]
-
     cmd = [sys.executable, "-m", "lithium"]
     if target_pattern:
         cmd.extend(["outputs", f"-t{timeout}", "-s", target_pattern])
     else:
         cmd.extend(["crashes", f"-t{timeout}"])
 
-    cmd.append(str(binary))
-    cmd.extend(args)
-    cmd.append(str(testcase))
-
+    cmd.extend([str(binary), *args, str(testcase)])
     try:
         subprocess.run(cmd, check=True)
         return True
     except FileNotFoundError:
-        print("Error: lithium module is not installed. Install via: pip install lithium-reducer")
+        print("Error: lithium module not installed. Install via: pip install lithium-reducer")
         return False
     except subprocess.CalledProcessError as exc:
         print(f"Lithium reduction failed: {exc}")
@@ -56,21 +46,19 @@ def reduce_delta_lines(
     servo_args: Optional[list[str]] = None,
     attempts: int = 1,
 ) -> Path:
-    """Reduce coarse chunks first, then repeat single-line passes to a fixed point.
-
-    A candidate is interesting if any of ``attempts`` executions reproduces the
-    target panic. Keep trial files beside the output for relative resource URLs;
-    only accepted candidates are written to the output checkpoint.
-    """
     if attempts < 1 or timeout <= 0:
         raise ValueError("attempts and timeout must be positive")
+
     lines = testcase.read_text(encoding="utf-8", errors="replace").splitlines(keepends=True)
     out_file = output_path or testcase.with_name(f"{testcase.stem}-reduced.html")
     out_file.parent.mkdir(parents=True, exist_ok=True)
     runs = 0
+
     with tempfile.NamedTemporaryFile(
-        prefix=f".{out_file.stem}-", suffix=out_file.suffix or ".html",
-        dir=out_file.parent, delete=False,
+        prefix=f".{out_file.stem}-",
+        suffix=out_file.suffix or ".html",
+        dir=out_file.parent,
+        delete=False,
     ) as trial:
         trial_path = Path(trial.name)
 
@@ -80,7 +68,10 @@ def reduce_delta_lines(
         for _ in range(attempts):
             runs += 1
             res = run_single_test(
-                binary=binary, testcase=trial_path, servo_args=servo_args, timeout=timeout,
+                binary=binary,
+                testcase=trial_path,
+                servo_args=servo_args,
+                timeout=timeout,
             )
             if res.crash_info is None:
                 continue
@@ -94,9 +85,10 @@ def reduce_delta_lines(
     try:
         if not test_lines(lines):
             raise ValueError(f"Baseline testcase does not reproduce target panic on {binary}")
+
         out_file.write_text("".join(lines), encoding="utf-8")
         print(f"Starting chunk reduction for {testcase.name} ({len(lines)} lines)...", flush=True)
-        # Largest power of two strictly smaller than the initial line count.
+
         chunk = 1 << max(0, (len(lines) - 1).bit_length() - 1)
         while True:
             changed = False
@@ -115,6 +107,7 @@ def reduce_delta_lines(
                     break
             else:
                 chunk //= 2
+
         print(f"Reduction complete: {out_file} ({len(lines)} lines, {runs} runs)")
         return out_file
     finally:

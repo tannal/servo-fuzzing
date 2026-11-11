@@ -1,9 +1,3 @@
-"""Conservative exact-message/file and ordered-stack matching.
-
-Loads, validates, saves, and matches crash signatures against the database of
-known issues.
-"""
-
 from __future__ import annotations
 
 import json
@@ -22,15 +16,15 @@ class CrashSignature(TypedDict):
 
 
 def load_signatures(path: Path) -> list[CrashSignature]:
-    """Load and validate signatures from a JSON database file."""
     data = json.loads(path.read_text(encoding="utf-8"))
     if (
         not isinstance(data, dict)
-        or type(data.get("schema_version")) is not int
+        or not isinstance(data.get("schema_version"), int)
         or data["schema_version"] != 1
         or not isinstance(data.get("signatures"), list)
     ):
         raise ValueError("Unsupported signature database")
+
     seen = set()
     for entry in data["signatures"]:
         if not isinstance(entry, dict):
@@ -44,11 +38,11 @@ def load_signatures(path: Path) -> list[CrashSignature]:
         if entry["id"] in seen:
             raise ValueError("Duplicate signature id")
         seen.add(entry["id"])
+
     return data["signatures"]
 
 
 def save_signatures(path: Path, signatures: list[CrashSignature]) -> None:
-    """Save signatures to a JSON database file adhering to schema version 1."""
     data = {
         "schema_version": 1,
         "signatures": signatures,
@@ -57,39 +51,25 @@ def save_signatures(path: Path, signatures: list[CrashSignature]) -> None:
     path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
-def match(crash: CrashInfo, signatures: list[CrashSignature]) -> str | None:
-    """Matches a CrashInfo against known signatures.
-
-    Conservative exact-message/file and ordered-stack matching.
-    """
+def match(crash: CrashInfo, signatures: list[CrashSignature]) -> Optional[str]:
+    crash_norm = normalize_source_path(crash.source_file)
     for entry in signatures:
-        # Check message and source_file
-        # Allow normalized matching in case signatures or crash differ in trailing line numbers
-        entry_source = normalize_source_path(entry["source_file"])
-        crash_source = normalize_source_path(crash.source_file)
-
         if entry["message"] != crash.message:
             continue
-        if entry["source_file"] != crash.source_file and entry_source != crash_source:
+        if entry["source_file"] != crash.source_file and normalize_source_path(entry["source_file"]) != crash_norm:
             continue
 
         frames = iter(crash.stack_frames)
         if all(any(actual == wanted or wanted in actual for actual in frames) for wanted in entry["stack_frames"]):
             return entry["id"]
+
     return None
 
 
 def find_signature_by_id(signatures: list[CrashSignature], signature_id: str) -> Optional[CrashSignature]:
-    """Find a signature entry by ID."""
-    for sig in signatures:
-        if sig["id"] == signature_id:
-            return sig
-    return None
+    return next((s for s in signatures if s["id"] == signature_id), None)
 
 
 def find_signature_by_issue(signatures: list[CrashSignature], issue: str) -> Optional[CrashSignature]:
-    """Find a signature entry by GitHub issue URL or issue number."""
-    for sig in signatures:
-        if sig["issue"] == issue or sig["issue"].rstrip("/").endswith(f"/{issue.lstrip('#')}"):
-            return sig
-    return None
+    issue_target = f"/{issue.lstrip('#')}"
+    return next((s for s in signatures if s["issue"] == issue or s["issue"].rstrip("/").endswith(issue_target)), None)

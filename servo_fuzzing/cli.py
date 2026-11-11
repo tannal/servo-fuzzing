@@ -1,5 +1,3 @@
-"""Unified command-line interface for servo-fuzzing."""
-
 from __future__ import annotations
 
 import argparse
@@ -20,7 +18,6 @@ from .signatures import load_signatures, save_signatures
 
 
 def cmd_run(args: argparse.Namespace) -> int:
-    """Delegate to runner."""
     runner_args = [
         "--binary",
         args.binary,
@@ -52,35 +49,30 @@ def cmd_run(args: argparse.Namespace) -> int:
 
 
 def cmd_setup_generators(args: argparse.Namespace) -> int:
-    """Clone or check DOM fuzzing generators (Domato, Freedom, Minerva)."""
     manager = GeneratorManager()
     print("DOM Fuzzing Generators Status:")
-    status = manager.get_status()
-    for name, info in status.items():
-        installed = "✅ Installed" if info["installed"] else "❌ Not found"
-        print(f"  • {name:8s}: {installed} ({info['path']})")
+    for name, info in manager.get_status().items():
+        status = "Installed" if info["installed"] else "Not found"
+        print(f"  * {name:8s}: {status} ({info['path']})")
 
     if getattr(args, "check", False):
         return 0
 
     print("\nEnsuring all generators are installed...")
     results = manager.clone_all()
-    all_ok = all(results.values())
     print("Setup completed.")
-    return 0 if all_ok else 1
+    return 0 if all(results.values()) else 1
 
 
 def cmd_generate(args: argparse.Namespace) -> int:
-    """Generate test cases using Domato, Freedom, or Minerva."""
     manager = GeneratorManager()
     output_dir = Path(args.output)
 
     if getattr(args, "status", False):
-        status = manager.get_status()
         print("DOM Fuzzing Generators Status:")
-        for name, info in status.items():
-            mark = "✅" if info["installed"] else "❌"
-            print(f"  {mark} {name:8s} -> {info['path']}")
+        for name, info in manager.get_status().items():
+            mark = "+" if info["installed"] else "-"
+            print(f"  [{mark}] {name:8s} -> {info['path']}")
         return 0
 
     if args.clone:
@@ -103,13 +95,11 @@ def cmd_generate(args: argparse.Namespace) -> int:
             count_per_generator=args.count,
             auto_clone=args.clone,
         )
-        total = sum(len(cases) for cases in results.values())
-        print(f"Generated total of {total} testcases across {len(results)} tools.")
+        print(f"Generated total of {sum(len(c) for c in results.values())} testcases across {len(results)} tools.")
     return 0
 
 
 def cmd_reproduce(args: argparse.Namespace) -> int:
-    """Estimate reproducibility of a crash pattern or run repeat/parallel test."""
     binary = Path(args.binary)
     testcase = Path(args.testcase)
 
@@ -133,7 +123,6 @@ def cmd_reproduce(args: argparse.Namespace) -> int:
 
 
 def cmd_reduce(args: argparse.Namespace) -> int:
-    """Reduce a testcase while preserving the target panic."""
     testcase = Path(args.testcase).resolve()
     if not testcase.exists():
         print(f"Error: Testcase not found: {testcase}")
@@ -144,41 +133,51 @@ def cmd_reduce(args: argparse.Namespace) -> int:
         print(f"Error: Binary not found: {binary}")
         return 1
 
+    target_sig = None
+    if getattr(args, "signature", None):
+        sig_path = Path(args.signature)
+        if sig_path.exists():
+            try:
+                target_sig = json.loads(sig_path.read_text(encoding="utf-8"))
+            except Exception as e:
+                print(f"Warning: Failed to parse signature from {sig_path}: {e}")
+
+    pattern = args.pattern if args.pattern else None
+
     if args.method == "lithium":
         success = reduce_with_lithium(
             binary=binary,
             testcase=testcase,
-            target_pattern=args.pattern,
+            target_pattern=pattern or "assertion failed",
             timeout=int(args.timeout),
         )
         return 0 if success else 1
-    else:
-        out = Path(args.output).resolve() if args.output else None
-        try:
-            res_path = reduce_delta_lines(
-                binary=binary,
-                testcase=testcase,
-                target_message=args.pattern,
-                output_path=out,
-                timeout=args.timeout,
-                attempts=args.attempts,
-            )
-        except ValueError as exc:
-            print(f"Error: {exc}")
-            return 1
-        print(f"Reduced reproducer written to: {res_path}")
-        return 0
+
+    out = Path(args.output).resolve() if args.output else None
+    try:
+        res_path = reduce_delta_lines(
+            binary=binary,
+            testcase=testcase,
+            target_signature=target_sig,
+            target_message=pattern,
+            output_path=out,
+            timeout=args.timeout,
+            attempts=args.attempts,
+        )
+    except ValueError as exc:
+        print(f"Error: {exc}")
+        return 1
+    print(f"Reduced reproducer written to: {res_path}")
+    return 0
 
 
 def cmd_report(args: argparse.Namespace) -> int:
-    """Run a testcase and output a formatted GitHub issue report."""
     binary = Path(args.binary)
     testcase = Path(args.testcase)
 
     print(f"Running {testcase} on {binary}...")
     res = run_single_test(binary=binary, testcase=testcase, timeout=args.timeout)
-    version = get_servo_version(binary)
-    draft = make_github_issue_draft(res, servo_version=version)
+    draft = make_github_issue_draft(res, servo_version=get_servo_version(binary))
     print("\n" + "=" * 60)
     print(draft)
     print("=" * 60)
@@ -190,7 +189,6 @@ def cmd_report(args: argparse.Namespace) -> int:
 
 
 def cmd_add_signature(args: argparse.Namespace) -> int:
-    """Add a new signature to rust-panic.json (either manually or from a draft file)."""
     sig_path = Path(args.signatures)
     sigs = load_signatures(sig_path) if sig_path.exists() else []
 
@@ -221,17 +219,15 @@ def cmd_add_signature(args: argparse.Namespace) -> int:
         print(f"Error: Signature ID '{entry['id']}' already exists.")
         return 1
 
-    sigs.append(entry)  # type: ignore
+    sigs.append(entry)
     save_signatures(sig_path, sigs)
-    print(f"✅ Added signature '{entry['id']}' to {sig_path}")
+    print(f"Added signature '{entry['id']}' to {sig_path}")
     return 0
 
 
 def cmd_sync_issues(args: argparse.Namespace) -> int:
-    """Sync open B-fuzzing issues from GitHub into signatures/rust-panic.json."""
-    signatures_path = Path(args.signatures)
     added, existing = sync_signatures_from_github(
-        signatures_path=signatures_path,
+        signatures_path=Path(args.signatures),
         repo=args.repo,
         token=args.token,
         dry_run=args.dry_run,
@@ -241,7 +237,6 @@ def cmd_sync_issues(args: argparse.Namespace) -> int:
 
 
 def cmd_prune_closed(args: argparse.Namespace) -> int:
-    """Query GitHub API to check if tracked issues are closed (fixed)."""
     pruned = check_and_prune_closed_issues(
         signatures_path=Path(args.signatures),
         archive_path=Path(args.archive),
@@ -253,7 +248,6 @@ def cmd_prune_closed(args: argparse.Namespace) -> int:
 
 
 def cmd_bundle(args: argparse.Namespace) -> int:
-    """Manage testcase bundles (pack or unpack compressed tarballs)."""
     if args.action == "pack":
         binary = Path(args.binary) if args.binary else None
         pack_bundle(
@@ -262,6 +256,8 @@ def cmd_bundle(args: argparse.Namespace) -> int:
             max_tests=args.max_tests,
             filter_timeouts_with_binary=binary,
             timeout=args.timeout,
+            from_triage=Path(args.from_triage) if getattr(args, "from_triage", None) else None,
+            jobs=getattr(args, "jobs", 4),
         )
     elif args.action == "unpack":
         unpack_bundle(
@@ -279,17 +275,16 @@ def cmd_bundle(args: argparse.Namespace) -> int:
 
 
 def cmd_validate_signatures(args: argparse.Namespace) -> int:
-    """Validate rust-panic.json against schema and check for duplicates."""
     sig_path = Path(args.signatures)
     try:
         sigs = load_signatures(sig_path)
-        print(f"✅ Signatures database {sig_path} is valid.")
+        print(f"Signatures database {sig_path} is valid.")
         print(f"Total signatures: {len(sigs)}")
         for s in sigs:
-            print(f"  • {s['id']}: {s['message'][:50]}... ({s['source_file']})")
+            print(f"  * {s['id']}: {s['message'][:50]}... ({s['source_file']})")
         return 0
     except Exception as exc:
-        print(f"❌ Validation failed for {sig_path}: {exc}")
+        print(f"Validation failed for {sig_path}: {exc}")
         return 1
 
 
@@ -300,7 +295,6 @@ def main(argv: Optional[list[str]] = None) -> int:
     )
     subparsers = parser.add_subparsers(dest="subcommand", help="Available subcommands")
 
-    # run
     p_run = subparsers.add_parser("run", help="Run fuzzing test suite")
     p_run.add_argument("--binary", required=True, help="Path to servoshell binary")
     p_run.add_argument("--config", default=None, help="Path to config file")
@@ -308,20 +302,18 @@ def main(argv: Optional[list[str]] = None) -> int:
     p_run.add_argument("--output", default="target/fuzzing", help="Artifacts directory")
     p_run.add_argument("--testcases", nargs="*", default=None, help="Direct testcase directories or HTML files to replay")
     p_run.add_argument("--bundle", default=None, help="Path or URL to testcase bundle (.tar.gz)")
-    p_run.add_argument("--force-download", action="store_true", help="Force re-downloading the latest bundle ignoring cache")
+    p_run.add_argument("--force-download", action="store_true", help="Force re-downloading bundle")
     p_run.add_argument("-j", "--jobs", type=int, default=None, help="Parallel worker threads")
     p_run.add_argument("--timeout", type=float, default=None, help="Per-test timeout in seconds")
     p_run.add_argument("--generate", action="store_true", help="Generate fresh tests before running")
-    p_run.add_argument("--generate-count", type=int, default=100, help="Test cases per tool if --generate is enabled (default: 100)")
+    p_run.add_argument("--generate-count", type=int, default=100, help="Test cases per tool if --generate is enabled")
     p_run.add_argument("--dry-run", action="store_true", help="Validate config without running tests")
     p_run.set_defaults(func=cmd_run)
 
-    # setup-generators
     p_setup = subparsers.add_parser("setup-generators", help="Clone or check DOM fuzzing generators")
     p_setup.add_argument("--check", action="store_true", help="Check status without cloning")
     p_setup.set_defaults(func=cmd_setup_generators)
 
-    # generate
     p_gen = subparsers.add_parser("generate", help="Generate test cases")
     p_gen.add_argument("--tool", choices=["domato", "freedom", "minerva"], help="Specific generator tool")
     p_gen.add_argument("-n", "--count", type=int, default=100, help="Test cases per tool (default: 100)")
@@ -330,11 +322,10 @@ def main(argv: Optional[list[str]] = None) -> int:
     p_gen.add_argument("--status", action="store_true", help="Check installation status of generators")
     p_gen.set_defaults(func=cmd_generate)
 
-    # reproduce
     p_repro = subparsers.add_parser("reproduce", help="Reproduce crashes and estimate flakiness")
     p_repro.add_argument("testcase", help="Path to testcase HTML")
     p_repro.add_argument("--binary", required=True, help="Path to servoshell binary")
-    p_repro.add_argument("--pattern", help="Regexp pattern to match (e.g. 'parent_proxy')")
+    p_repro.add_argument("--pattern", help="Regexp pattern to match")
     p_repro.add_argument("--mode", choices=["estimate", "repeat", "parallel"], default="estimate")
     p_repro.add_argument("--count", type=int, default=10, help="Count for repeat or parallel mode")
     p_repro.add_argument("--repeat", type=int, default=10, help="Number of repetition rounds")
@@ -342,18 +333,17 @@ def main(argv: Optional[list[str]] = None) -> int:
     p_repro.add_argument("--timeout", type=float, default=2.0, help="Instance timeout in seconds")
     p_repro.set_defaults(func=cmd_reproduce)
 
-    # reduce
     p_reduce = subparsers.add_parser("reduce", help="Minimize a crashing testcase")
     p_reduce.add_argument("testcase", help="Path to testcase HTML")
     p_reduce.add_argument("--binary", required=True, help="Path to servoshell binary")
-    p_reduce.add_argument("--pattern", default="assertion failed", help="Target panic message or pattern")
-    p_reduce.add_argument("--method", choices=["delta", "lithium"], default="delta", help="Reduction algorithm (default: delta)")
+    p_reduce.add_argument("--pattern", default=None, help="Target panic message or pattern")
+    p_reduce.add_argument("--signature", help="Path to signature JSON to preserve specific crash")
+    p_reduce.add_argument("--method", choices=["delta", "lithium"], default="delta", help="Reduction algorithm")
     p_reduce.add_argument("-o", "--output", help="Output path for reduced testcase")
     p_reduce.add_argument("--timeout", type=float, default=3.0, help="Per-run timeout in seconds")
-    p_reduce.add_argument("--attempts", type=int, default=1, help="Runs per candidate for intermittent panics (delta only; any match accepts)")
+    p_reduce.add_argument("--attempts", type=int, default=1, help="Runs per candidate for intermittent panics")
     p_reduce.set_defaults(func=cmd_reduce)
 
-    # report
     p_rep = subparsers.add_parser("report", help="Generate GitHub issue draft for a testcase")
     p_rep.add_argument("testcase", help="Path to testcase HTML")
     p_rep.add_argument("--binary", required=True, help="Path to servoshell binary")
@@ -361,43 +351,41 @@ def main(argv: Optional[list[str]] = None) -> int:
     p_rep.add_argument("--timeout", type=float, default=5.0, help="Timeout in seconds")
     p_rep.set_defaults(func=cmd_report)
 
-    # add-signature
     p_add = subparsers.add_parser("add-signature", help="Add a signature to rust-panic.json")
     p_add.add_argument("--signatures", default="signatures/rust-panic.json", help="Path to signatures file")
-    p_add.add_argument("--from-draft", help="Path to signature_draft.json generated during a test run")
-    p_add.add_argument("--issue", help="GitHub issue URL (e.g. https://github.com/servo/servo/issues/49500)")
+    p_add.add_argument("--from-draft", help="Path to signature_draft.json")
+    p_add.add_argument("--issue", help="GitHub issue URL")
     p_add.add_argument("--id", help="Signature unique ID")
     p_add.add_argument("--message", help="Panic message")
     p_add.add_argument("--source-file", help="Source file path")
-    p_add.add_argument("--stack-frame", action="append", help="Stack backtrace frame (can be repeated)")
+    p_add.add_argument("--stack-frame", action="append", help="Stack backtrace frame")
     p_add.set_defaults(func=cmd_add_signature)
 
-    # sync-issues
     p_sync = subparsers.add_parser("sync-issues", help="Sync B-fuzzing issues from GitHub")
     p_sync.add_argument("--signatures", default="signatures/rust-panic.json", help="Path to rust-panic.json")
-    p_sync.add_argument("--repo", default="servo/servo", help="Target GitHub repo (default: servo/servo)")
+    p_sync.add_argument("--repo", default="servo/servo", help="Target GitHub repo")
     p_sync.add_argument("--token", help="GitHub Personal Access Token")
-    p_sync.add_argument("--dry-run", action="store_true", help="Print changes without modifying signatures file")
+    p_sync.add_argument("--dry-run", action="store_true", help="Print changes without modifying files")
     p_sync.set_defaults(func=cmd_sync_issues)
 
-    # prune-closed
     p_prune = subparsers.add_parser("prune-closed", help="Prune fixed/closed issues from rust-panic.json")
     p_prune.add_argument("--signatures", default="signatures/rust-panic.json", help="Path to signatures file")
-    p_prune.add_argument("--archive", default="signatures/fixed-history.json", help="Path to fixed signatures archive")
+    p_prune.add_argument("--archive", default="signatures/fixed-history.json", help="Path to fixed archive")
     p_prune.add_argument("--token", help="GitHub Personal Access Token")
     p_prune.add_argument("--dry-run", action="store_true", help="Print changes without modifying files")
     p_prune.set_defaults(func=cmd_prune_closed)
 
-    # bundle
     p_bundle = subparsers.add_parser("bundle", help="Pack or unpack testcase bundles")
     p_bundle_sub = p_bundle.add_subparsers(dest="action", help="Bundle action (pack, unpack, download)")
 
     p_b_pack = p_bundle_sub.add_parser("pack", help="Pack directory into bundle tarball")
     p_b_pack.add_argument("--source", default="testcases", help="Source directory containing HTML testcases")
     p_b_pack.add_argument("--output", default="target/fuzz-bundle-latest.tar.gz", help="Output tarball path")
-    p_b_pack.add_argument("--max-tests", type=int, default=300, help="Maximum tests to bundle (default: 300)")
-    p_b_pack.add_argument("--binary", help="Optional servoshell binary to test and filter out hanging/timing-out cases")
+    p_b_pack.add_argument("--max-tests", type=int, default=300, help="Maximum tests to bundle")
+    p_b_pack.add_argument("--binary", help="Binary to filter out hanging/timing-out cases")
     p_b_pack.add_argument("--timeout", type=float, default=2.0, help="Timeout threshold to discard hanging tests")
+    p_b_pack.add_argument("--from-triage", help="Triage directory to reuse existing results")
+    p_b_pack.add_argument("--jobs", "-j", type=int, default=4, help="Concurrency for filtering timeouts")
 
     p_b_unpack = p_bundle_sub.add_parser("unpack", help="Unpack bundle tarball into directory")
     p_b_unpack.add_argument("--bundle", required=True, help="Path to .tar.gz bundle")
@@ -407,11 +395,10 @@ def main(argv: Optional[list[str]] = None) -> int:
     p_b_dl = p_bundle_sub.add_parser("download", help="Download bundle tarball from URL")
     p_b_dl.add_argument("--url", required=True, help="URL to download bundle from")
     p_b_dl.add_argument("--output", default="target/fuzz-bundle-latest.tar.gz", help="Output path")
-    p_b_dl.add_argument("--token", help="GitHub Personal Access Token if downloading from private asset")
+    p_b_dl.add_argument("--token", help="GitHub Personal Access Token")
 
     p_bundle.set_defaults(func=cmd_bundle)
 
-    # validate-signatures
     p_val = subparsers.add_parser("validate-signatures", help="Validate rust-panic.json schema")
     p_val.add_argument("--signatures", default="signatures/rust-panic.json", help="Path to signatures file")
     p_val.set_defaults(func=cmd_validate_signatures)
