@@ -70,18 +70,36 @@ jobs:
             --output target/triage \
             --timeout 2.0 || true
 
-          # If new panics occurred, auto-reduce them into testcases/corpus/
+          # If new panics occurred, deduplicate and auto-reduce them into testcases/corpus/
           if [ -d "target/triage/new_crashes" ]; then
+            declare -A seen_sigs
             for crash_dir in target/triage/new_crashes/*; do
               if [ -d "$crash_dir" ]; then
                 crash_id=$(basename "$crash_dir")
-                echo "Minimizing crash $crash_id..."
+                sig_file="$crash_dir/signature_draft.json"
+                sig_id=""
+                if [ -f "$sig_file" ]; then
+                  sig_id=$(grep -o '"id": "[^"]*' "$sig_file" | head -n 1 | cut -d'"' -f4)
+                fi
+                if [ -n "$sig_id" ] && [ -n "${seen_sigs[$sig_id]}" ]; then
+                  echo "Skipping duplicate crash $crash_id (already processed signature: $sig_id)"
+                  continue
+                fi
+                [ -n "$sig_id" ] && seen_sigs[$sig_id]=1
+
+                echo "Minimizing crash $crash_id (sig: ${sig_id:-unknown})..."
                 repro_file=$(find "$crash_dir" -name "*.html" | head -n 1)
+                sig_arg=""
+                if [ -f "$sig_file" ]; then
+                  sig_arg="--signature $sig_file"
+                fi
+                out_name="crash-${sig_id:-$crash_id}.html"
                 if [ -n "$repro_file" ]; then
                   servo-fuzzing reduce "$repro_file" \
                     --binary ./servo/servoshell \
-                    --output "testcases/corpus/crash-${crash_id}.html" \
-                    --timeout 2.0 || cp "$repro_file" "testcases/corpus/crash-${crash_id}.html"
+                    --output "testcases/corpus/${out_name}" \
+                    $sig_arg \
+                    --timeout 2.0 || cp "$repro_file" "testcases/corpus/${out_name}"
                 fi
               fi
             done
@@ -92,7 +110,9 @@ jobs:
           servo-fuzzing bundle pack \
             --source target/generated \
             --output target/fuzz-bundle-latest.tar.gz \
+            --from-triage target/triage \
             --binary ./servo/servoshell \
+            --jobs 4 \
             --timeout 2.0 \
             --max-tests 300
 
@@ -112,14 +132,30 @@ jobs:
             --title "Latest Clean Replay Bundle" \
             --notes "Automated clean fuzzing bundle with hangs and timeouts filtered out."
 
+      - name: Publish Step Summary
+        if: always()
+        run: |
+          if [ -f "target/triage/report.md" ]; then
+            cat target/triage/report.md >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Upload Triage Reports & Reproductions
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: triage-reports
+          path: target/triage
+
       - name: Commit Updated Signatures & Corpus
         uses: peter-evans/create-pull-request@v6
+        continue-on-error: true
         with:
           commit-message: "chore(fuzzing): automated weekly maintenance and corpus update"
           title: "chore: update fuzzing signatures and corpus"
           body: |
             Automated maintenance run:
             - Pruned closed/fixed issues from `rust-panic.json` to `fixed-history.json`
+            - Minimized newly discovered panics into `testcases/corpus/`
             - Refreshed clean active testcase bundle
           branch: "automated/weekly-fuzz-update"
           delete-branch: true

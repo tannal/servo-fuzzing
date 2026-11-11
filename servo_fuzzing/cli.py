@@ -144,11 +144,22 @@ def cmd_reduce(args: argparse.Namespace) -> int:
         print(f"Error: Binary not found: {binary}")
         return 1
 
+    target_sig = None
+    if getattr(args, "signature", None):
+        sig_path = Path(args.signature)
+        if sig_path.exists():
+            try:
+                target_sig = json.loads(sig_path.read_text(encoding="utf-8"))
+            except Exception as e:
+                print(f"Warning: Failed to parse signature from {sig_path}: {e}")
+
+    pattern = args.pattern if args.pattern else None
+
     if args.method == "lithium":
         success = reduce_with_lithium(
             binary=binary,
             testcase=testcase,
-            target_pattern=args.pattern,
+            target_pattern=pattern or "assertion failed",
             timeout=int(args.timeout),
         )
         return 0 if success else 1
@@ -158,7 +169,8 @@ def cmd_reduce(args: argparse.Namespace) -> int:
             res_path = reduce_delta_lines(
                 binary=binary,
                 testcase=testcase,
-                target_message=args.pattern,
+                target_signature=target_sig,
+                target_message=pattern,
                 output_path=out,
                 timeout=args.timeout,
                 attempts=args.attempts,
@@ -262,6 +274,8 @@ def cmd_bundle(args: argparse.Namespace) -> int:
             max_tests=args.max_tests,
             filter_timeouts_with_binary=binary,
             timeout=args.timeout,
+            from_triage=Path(args.from_triage) if getattr(args, "from_triage", None) else None,
+            jobs=getattr(args, "jobs", 4),
         )
     elif args.action == "unpack":
         unpack_bundle(
@@ -346,7 +360,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     p_reduce = subparsers.add_parser("reduce", help="Minimize a crashing testcase")
     p_reduce.add_argument("testcase", help="Path to testcase HTML")
     p_reduce.add_argument("--binary", required=True, help="Path to servoshell binary")
-    p_reduce.add_argument("--pattern", default="assertion failed", help="Target panic message or pattern")
+    p_reduce.add_argument("--pattern", default=None, help="Target panic message or pattern (default: preserve any panic or target signature)")
+    p_reduce.add_argument("--signature", help="Path to signature JSON (e.g. signature_draft.json) to preserve specific crash")
     p_reduce.add_argument("--method", choices=["delta", "lithium"], default="delta", help="Reduction algorithm (default: delta)")
     p_reduce.add_argument("-o", "--output", help="Output path for reduced testcase")
     p_reduce.add_argument("--timeout", type=float, default=3.0, help="Per-run timeout in seconds")
@@ -398,6 +413,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     p_b_pack.add_argument("--max-tests", type=int, default=300, help="Maximum tests to bundle (default: 300)")
     p_b_pack.add_argument("--binary", help="Optional servoshell binary to test and filter out hanging/timing-out cases")
     p_b_pack.add_argument("--timeout", type=float, default=2.0, help="Timeout threshold to discard hanging tests")
+    p_b_pack.add_argument("--from-triage", help="Path to triage directory (e.g. target/triage) to reuse existing results and avoid re-testing")
+    p_b_pack.add_argument("--jobs", "-j", type=int, default=4, help="Concurrency for filtering timeouts when binary is used (default: 4)")
 
     p_b_unpack = p_bundle_sub.add_parser("unpack", help="Unpack bundle tarball into directory")
     p_b_unpack.add_argument("--bundle", required=True, help="Path to .tar.gz bundle")

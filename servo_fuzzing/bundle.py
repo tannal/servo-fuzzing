@@ -6,12 +6,14 @@ Automatically resolves and downloads the latest release bundle from GitHub.
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
 import tarfile
 import time
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Optional
 
@@ -154,10 +156,13 @@ def pack_bundle(
     max_tests: int = 300,
     filter_timeouts_with_binary: Optional[Path] = None,
     timeout: float = 2.0,
+    from_triage: Optional[Path] = None,
+    jobs: int = 4,
 ) -> Path:
     """Pack a directory of HTML test cases into a compressed tarball.
 
-    Optionally filters out testcases that time out without panicking.
+    Optionally filters out testcases that time out without panicking, or
+    reuses results from a prior triage summary to pack immediately without re-testing.
     """
     source_dir = Path(source_dir).resolve()
     output_tar = Path(output_tar).resolve()
@@ -168,8 +173,27 @@ def pack_bundle(
 
     print(f"Scanning {len(all_html)} testcases in {source_dir}...")
 
-    bin_path = Path(filter_timeouts_with_binary).resolve() if filter_timeouts_with_binary else None
-    if bin_path and bin_path.exists():
+    # Fast path: Reuse results already triaged by `servo-fuzzing run`
+    if from_triage:
+        triage_path = Path(from_triage).resolve()
+        summary_file = triage_path / "summary.json" if triage_path.is_dir() else triage_path
+        if summary_file.exists():
+            try:
+                summary_data = json.loads(summary_file.read_text(encoding="utf-8"))
+                pass_paths = set()
+                for item in summary_data.get("results", []):
+                    if item.get("status") == "PASS":
+                        pass_paths.add(Path(item["testcase"]).resolve())
+                selected = [tc for tc in all_html if tc.resolve() in pass_paths][:max_tests]
+                print(f"⚡ Fast-track: Selected {len(selected)} clean passing testcases directly from {summary_file.name}")
+            except Exception as e:
+                print(f"Warning: Failed to parse triage summary from {summary_file}: {e}")
+
+    if not selected and filter_timeouts_with_binary:
+        bin_path = Path(filter_timeouts_with_binary).resolve()
+        if not bin_path.exists():
+            raise FileNotFoundError(f"Specified binary for timeout filtering does not exist: {bin_path}")
+
         # Health check to ensure servoshell can actually run on this machine
         health = run_single_test(
             binary=bin_path,
@@ -181,31 +205,31 @@ def pack_bundle(
             err_msg = health.combined_output.strip() or health.error_message or "Unknown failure"
             raise RuntimeError(f"Cannot filter bundle: servoshell failed health check:\n{err_msg}")
 
-        print(f"Filtering out tests that hang/timeout using {bin_path} (timeout={timeout}s)...")
+        print(f"Filtering out tests that hang/timeout using {bin_path} (timeout={timeout}s, jobs={jobs})...")
         discarded_timeouts = 0
         discarded_errors = 0
 
-        for idx, tc in enumerate(all_html, 1):
-            if len(selected) >= max_tests:
-                break
+        def check_case(tc: Path):
             res = run_single_test(
                 binary=bin_path,
                 testcase=tc,
                 servo_args=["-xfz", "--enable-experimental-web-platform-features"],
                 timeout=timeout,
             )
-            if res.status == TestStatus.TIMEOUT:
-                discarded_timeouts += 1
-                continue
-            if res.status != TestStatus.PASS:
-                discarded_errors += 1
-                continue
-            selected.append(tc)
+            return tc, res
+
+        with ThreadPoolExecutor(max_workers=jobs) as pool:
+            for tc, res in pool.map(check_case, all_html):
+                if res.status == TestStatus.TIMEOUT:
+                    discarded_timeouts += 1
+                elif res.status != TestStatus.PASS:
+                    discarded_errors += 1
+                else:
+                    if len(selected) < max_tests:
+                        selected.append(tc)
 
         print(f"Filter summary: {len(selected)} kept, {discarded_timeouts} timeouts discarded, {discarded_errors} errors discarded.")
-    elif filter_timeouts_with_binary:
-        raise FileNotFoundError(f"Specified binary for timeout filtering does not exist: {filter_timeouts_with_binary}")
-    else:
+    elif not selected:
         selected = all_html[:max_tests]
 
     print(f"Packing {len(selected)} selected testcases into {output_tar}...")
