@@ -1,0 +1,11 @@
+{
+  "id": "stacking_context-internal-error-entered",
+  "message": "internal error: entered unreachable code: Found hoisted box with missing or non-BoxFragment.",
+  "source_file": "components/layout/display_list/stacking_context.rs",
+  "stack_frames": [
+    "<layout::fragment_tree::fragment::Fragment>::build_stacking_context_tree",
+    "<layout::fragment_tree::fragment::Fragment>::build_stacking_context_tree",
+    "<layout::fragment_tree::box_fragment::BoxFragmentWithStyle>::build_stacking_context_tree_for_children"
+  ],
+  "issue": "https://github.com/servo/servo/issues/TODO"
+}

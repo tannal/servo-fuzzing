@@ -1,0 +1,16 @@
+{
+  "testcase": "/home/runner/work/servo-fuzzing/servo-fuzzing/target/generated/freedom/1-179444843161.html",
+  "sha256": "867d8f8fd2079daa54947e4e5f1fbcd5f12e083154d24a31f37924d2beb87b58",
+  "run_summary": "/home/runner/work/servo-fuzzing/servo-fuzzing/target/triage/summary.json",
+  "result": {
+    "testcase": "/home/runner/work/servo-fuzzing/servo-fuzzing/target/generated/freedom/1-179444843161.html",
+    "status": "NEW_CRASH",
+    "exit_code": -9,
+    "duration": 2.0279005999999953,
+    "matched_signature": null,
+    "issue": null,
+    "panic_message": "internal error: entered unreachable code: Found hoisted box with missing or non-BoxFragment.",
+    "source_file": "components/layout/display_list/stacking_context.rs",
+    "line": 633
+  }
+}
