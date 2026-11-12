@@ -1,0 +1,97 @@
+Validation error: Value missing
+
+internal error: entered unreachable code: Found hoisted box with missing or non-BoxFragment. (thread Script#1, at components/layout/display_list/stacking_context.rs:633)
+   0: servoshell::backtrace::print
+   1: servoshell::panic_hook::panic_hook
+   2: std::panicking::panic_with_hook
+   3: std::panicking::panic_handler::{closure#0}
+   4: std::sys::backtrace::__rust_end_short_backtrace::<std::panicking::panic_handler::{closure#0}, !>
+   5: __rustc::rust_begin_unwind
+   6: core::panicking::panic_fmt
+   7: <layout::fragment_tree::fragment::Fragment>::build_stacking_context_tree
+   8: <layout::fragment_tree::fragment::Fragment>::build_stacking_context_tree
+   9: <layout::fragment_tree::box_fragment::BoxFragmentWithStyle>::build_stacking_context_tree_for_children
+  10: <layout::fragment_tree::box_fragment::BoxFragment>::build_stacking_context_tree_maybe_creating_stacking_context
+  11: <layout::fragment_tree::box_fragment::BoxFragment>::build_stacking_context_tree
+  12: <layout::fragment_tree::fragment::Fragment>::build_stacking_context_tree
+  13: <layout::fragment_tree::box_fragment::BoxFragmentWithStyle>::build_stacking_context_tree_for_children
+  14: <layout::fragment_tree::box_fragment::BoxFragment>::build_stacking_context_tree_maybe_creating_stacking_context
+  15: <layout::fragment_tree::box_fragment::BoxFragment>::build_stacking_context_tree
+  16: <layout::fragment_tree::fragment::Fragment>::build_stacking_context_tree
+  17: <layout::fragment_tree::box_fragment::BoxFragmentWithStyle>::build_stacking_context_tree_for_children
+  18: <layout::fragment_tree::box_fragment::BoxFragment>::build_stacking_context_tree_maybe_creating_stacking_context
+  19: <layout::fragment_tree::box_fragment::BoxFragment>::build_stacking_context_tree
+  20: <layout::fragment_tree::fragment::Fragment>::build_stacking_context_tree
+  21: <layout::fragment_tree::box_fragment::BoxFragmentWithStyle>::build_stacking_context_tree_for_children
+  22: <layout::fragment_tree::box_fragment::BoxFragment>::build_stacking_context_tree_maybe_creating_stacking_context
+  23: <layout::fragment_tree::box_fragment::BoxFragment>::build_stacking_context_tree
+  24: <layout::fragment_tree::fragment::Fragment>::build_stacking_context_tree
+  25: <layout::fragment_tree::box_fragment::BoxFragmentWithStyle>::build_stacking_context_tree_for_children
+  26: <layout::fragment_tree::box_fragment::BoxFragment>::build_stacking_context_tree_maybe_creating_stacking_context
+  27: <layout::fragment_tree::box_fragment::BoxFragment>::build_stacking_context_tree
+  28: <layout::fragment_tree::fragment::Fragment>::build_stacking_context_tree
+  29: <layout::fragment_tree::fragment::Fragment>::build_stacking_context_tree
+  30: <layout::fragment_tree::box_fragment::BoxFragmentWithStyle>::build_stacking_context_tree_for_children
+  31: <layout::fragment_tree::box_fragment::BoxFragment>::build_stacking_context_tree_maybe_creating_stacking_context
+  32: <layout::fragment_tree::box_fragment::BoxFragment>::build_stacking_context_tree
+  33: <layout::fragment_tree::fragment::Fragment>::build_stacking_context_tree
+  34: <layout::fragment_tree::box_fragment::BoxFragmentWithStyle>::build_stacking_context_tree_for_children
+  35: <layout::fragment_tree::box_fragment::BoxFragment>::build_stacking_context_tree_maybe_creating_stacking_context
+  36: <layout::fragment_tree::box_fragment::BoxFragment>::build_stacking_context_tree
+  37: <layout::fragment_tree::fragment::Fragment>::build_stacking_context_tree
+  38: <layout::fragment_tree::box_fragment::BoxFragmentWithStyle>::build_stacking_context_tree_for_children
+  39: <layout::fragment_tree::box_fragment::BoxFragment>::build_stacking_context_tree_maybe_creating_stacking_context
+  40: <layout::fragment_tree::box_fragment::BoxFragment>::build_stacking_context_tree
+  41: <layout::layout_impl::LayoutThread>::build_stacking_context_tree
+  42: <layout::layout_impl::LayoutThread>::handle_reflow
+  43: <layout::layout_impl::LayoutThread as layout_api::Layout>::reflow
+  44: <script::dom::window::window::Window>::reflow
+  45: <script::dom::window::window::Window>::offset_parent_query
+  46: script_bindings::codegen::GenericBindings::HTMLElementBinding::HTMLElement_Binding::get_offsetHeight::<script::dom::bindings::codegen::DomTypeHolder::DomTypeHolder>::{closure#0}
+  47: mozjs::panic::wrap_panic
+  48: script_bindings::codegen::GenericBindings::HTMLElementBinding::HTMLElement_Binding::get_offsetHeight::<script::dom::bindings::codegen::DomTypeHolder::DomTypeHolder>
+  49: CallJitGetterOp
+  50: script_bindings::utils::generic_call::<script::dom::bindings::codegen::DomTypeHolder::DomTypeHolder, false>
+  51: script_bindings::utils::generic_getter::<script::dom::bindings::codegen::DomTypeHolder::DomTypeHolder, script_bindings::utils::call_policies::CrossOriginCallable, false>
+  52: _ZN2js23InternalCallOrConstructEP9JSContextRKN2JS8CallArgsENS_14MaybeConstructENS_10CallReasonE
+  53: _ZN2js10CallGetterEP9JSContextN2JS6HandleINS2_5ValueEEES5_NS2_13MutableHandleIS4_EE
+  54: _ZL10CallGetterP9JSContextN2JS6HandleIPN2js12NativeObjectEEENS2_INS1_5ValueEEENS2_INS1_11PropertyKeyEEENS3_16PropertyInfoBaseIjEENS1_13MutableHandleIS7_EE
+  55: _ZN2js17NativeGetPropertyEP9JSContextN2JS6HandleIPNS_12NativeObjectEEENS3_INS2_5ValueEEENS3_INS2_11PropertyKeyEEENS2_13MutableHandleIS7_EE
+  56: _ZN2js11GetPropertyEP9JSContextN2JS6HandleINS2_5ValueEEENS3_IPNS_12PropertyNameEEENS2_13MutableHandleIS4_EE
+  57: _ZN2js9InterpretEP9JSContextRNS_8RunStateE
+  58: _ZN2js9RunScriptEP9JSContextRNS_8RunStateE
+  59: _ZN2js23InternalCallOrConstructEP9JSContextRKN2JS8CallArgsENS_14MaybeConstructENS_10CallReasonE
+  60: _ZN2js4CallEP9JSContextN2JS6HandleINS2_5ValueEEES5_RKNS_13AnyInvokeArgsENS2_13MutableHandleIS4_EENS_10CallReasonE
+  61: _ZN2JS4CallEP9JSContextNS_6HandleINS_5ValueEEES4_RKNS_16HandleValueArrayENS_13MutableHandleIS3_EE
+  62: script_bindings::callback::call_setup::<script::dom::bindings::codegen::DomTypeHolder::DomTypeHolder, script_bindings::codegen::GenericBindings::EventHandlerBinding::EventHandlerNonNull<script::dom::bindings::codegen::DomTypeHolder::DomTypeHolder>, core::result::Result<(), script_bindings::error::Error>, <script_bindings::codegen::GenericBindings::EventHandlerBinding::EventHandlerNonNull<script::dom::bindings::codegen::DomTypeHolder::DomTypeHolder>>::Call_<script::dom::event::eventtarget::EventTarget>::{closure#0}>::{closure#0}::{closure#0}
+  63: script::dom::event::event::inner_invoke
+  64: script::dom::event::event::invoke
+  65: <script::dom::event::event::Event>::dispatch_inner
+  66: <script::dom::node::node::Node>::fire_synthetic_pointer_event_not_trusted
+  67: <script::dom::html::htmlelement::HTMLElement as script_bindings::codegen::GenericBindings::HTMLElementBinding::HTMLElement_Binding::HTMLElementMethods<script::dom::bindings::codegen::DomTypeHolder::DomTypeHolder>>::Click
+  68: script_bindings::codegen::GenericBindings::HTMLElementBinding::HTMLElement_Binding::click::<script::dom::bindings::codegen::DomTypeHolder::DomTypeHolder>::{closure#0}
+  69: mozjs::panic::wrap_panic
+  70: script_bindings::codegen::GenericBindings::HTMLElementBinding::HTMLElement_Binding::click::<script::dom::bindings::codegen::DomTypeHolder::DomTypeHolder>
+  71: CallJitMethodOp
+  72: script_bindings::utils::generic_call::<script::dom::bindings::codegen::DomTypeHolder::DomTypeHolder, false>
+  73: script_bindings::utils::generic_method::<script::dom::bindings::codegen::DomTypeHolder::DomTypeHolder, script_bindings::utils::call_policies::CrossOriginCallable, false>
+  74: _ZN2js23InternalCallOrConstructEP9JSContextRKN2JS8CallArgsENS_14MaybeConstructENS_10CallReasonE
+  75: _ZN2js9InterpretEP9JSContextRNS_8RunStateE
+  76: _ZN2js9RunScriptEP9JSContextRNS_8RunStateE
+  77: _ZN2js23InternalCallOrConstructEP9JSContextRKN2JS8CallArgsENS_14MaybeConstructENS_10CallReasonE
+  78: _ZN2js4CallEP9JSContextN2JS6HandleINS2_5ValueEEES5_RKNS_13AnyInvokeArgsENS2_13MutableHandleIS4_EENS_10CallReasonE
+  79: _ZN2JS4CallEP9JSContextNS_6HandleINS_5ValueEEES4_RKNS_16HandleValueArrayENS_13MutableHandleIS3_EE
+  80: script_bindings::callback::call_setup::<script::dom::bindings::codegen::DomTypeHolder::DomTypeHolder, script_bindings::codegen::GenericBindings::EventHandlerBinding::EventHandlerNonNull<script::dom::bindings::codegen::DomTypeHolder::DomTypeHolder>, core::result::Result<(), script_bindings::error::Error>, <script_bindings::codegen::GenericBindings::EventHandlerBinding::EventHandlerNonNull<script::dom::bindings::codegen::DomTypeHolder::DomTypeHolder>>::Call_<script::dom::event::eventtarget::EventTarget>::{closure#0}>::{closure#0}::{closure#0}
+  81: script::dom::event::event::inner_invoke
+  82: script::dom::event::event::invoke
+  83: <script::dom::event::event::Event>::dispatch_inner
+  84: <script_bindings::tasks::CancellableTask<<script::dom::document::document::Document>::queue_document_completion::fire_load_event<<script::dom::document::document::Document>::queue_document_completion::{closure#0}>> as script_bindings::tasks::TaskBox>::run_box
+  85: <script::event_loop::script_thread::ScriptThread>::handle_msg_from_script
+  86: <script::event_loop::script_thread::ScriptThread>::handle_message::{closure#0}
+  87: <script::event_loop::script_thread::ScriptThread>::handle_message
+  88: <profile_traits::mem::ProfilerChan>::run_with_memory_reporting::<<script::event_loop::script_thread::ScriptThread as layout_api::ScriptThreadFactory>::create::{closure#0}::{closure#1}, script::messaging::CommonScriptMsg::CollectReports, script::messaging::CommonScriptMsg, script::messaging::ScriptEventLoopSender>
+  89: std::sys::backtrace::__rust_begin_short_backtrace::<<script::event_loop::script_thread::ScriptThread as layout_api::ScriptThreadFactory>::create::{closure#0}, ()>
+  90: <std::thread::lifecycle::spawn_unchecked<<script::event_loop::script_thread::ScriptThread as layout_api::ScriptThreadFactory>::create::{closure#0}, ()>::{closure#1} as core::ops::function::FnOnce<()>>::call_once::{shim:vtable#0}
+  91: <std::sys::thread::unix::Thread>::new::thread_start
+  92: <unknown>
+  93: <unknown>
