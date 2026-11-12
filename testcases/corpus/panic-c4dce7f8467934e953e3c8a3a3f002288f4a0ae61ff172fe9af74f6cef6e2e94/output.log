@@ -1,0 +1,100 @@
+Validation error: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+Validation error: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+[W][05:52:52.636316] pw.conf      | [          conf.c: 1182 try_load_conf()] can't load config client.conf: No such file or directory
+[E][05:52:52.639209] pw.conf      | [          conf.c: 1215 pw_conf_load_conf_for_context()] can't load config client.conf: No such file or directory
+[ALSOFT] (EE) Failed to create PipeWire event context (errno: 2)
+ALSA lib confmisc.c:855:(parse_card) [error.core] cannot find card '0'
+ALSA lib conf.c:5211:(_snd_config_evaluate) [error.core] function snd_func_card_inum returned error: No such file or directory
+ALSA lib confmisc.c:422:(snd_func_concat) [error.core] error evaluating strings
+ALSA lib conf.c:5211:(_snd_config_evaluate) [error.core] function snd_func_concat returned error: No such file or directory
+ALSA lib confmisc.c:1342:(snd_func_refer) [error.core] error evaluating name
+ALSA lib conf.c:5211:(_snd_config_evaluate) [error.core] function snd_func_refer returned error: No such file or directory
+ALSA lib conf.c:5734:(snd_config_expand) [error.core] Evaluate error: No such file or directory
+ALSA lib pcm.c:2722:(snd_pcm_open_noupdate) [error.pcm] Unknown PCM default
+internal error: entered unreachable code: Found hoisted box with missing or non-BoxFragment. (thread Script#1, at components/layout/display_list/stacking_context.rs:633)
+   0: servoshell::backtrace::print
+   1: servoshell::panic_hook::panic_hook
+   2: std::panicking::panic_with_hook
+   3: std::panicking::panic_handler::{closure#0}
+   4: std::sys::backtrace::__rust_end_short_backtrace::<std::panicking::panic_handler::{closure#0}, !>
+   5: __rustc::rust_begin_unwind
+   6: core::panicking::panic_fmt
+   7: <layout::fragment_tree::fragment::Fragment>::build_stacking_context_tree
+   8: <layout::fragment_tree::fragment::Fragment>::build_stacking_context_tree
+   9: <layout::fragment_tree::box_fragment::BoxFragmentWithStyle>::build_stacking_context_tree_for_children
+  10: <layout::fragment_tree::box_fragment::BoxFragment>::build_stacking_context_tree_maybe_creating_stacking_context
+  11: <layout::fragment_tree::box_fragment::BoxFragment>::build_stacking_context_tree
+  12: <layout::fragment_tree::fragment::Fragment>::build_stacking_context_tree
+  13: <layout::fragment_tree::box_fragment::BoxFragmentWithStyle>::build_stacking_context_tree_for_children
+  14: <layout::fragment_tree::box_fragment::BoxFragment>::build_stacking_context_tree_maybe_creating_stacking_context
+  15: <layout::fragment_tree::box_fragment::BoxFragment>::build_stacking_context_tree
+  16: <layout::fragment_tree::fragment::Fragment>::build_stacking_context_tree
+  17: <layout::fragment_tree::box_fragment::BoxFragmentWithStyle>::build_stacking_context_tree_for_children
+  18: <layout::fragment_tree::box_fragment::BoxFragment>::build_stacking_context_tree_maybe_creating_stacking_context
+  19: <layout::fragment_tree::box_fragment::BoxFragment>::build_stacking_context_tree
+  20: <layout::fragment_tree::fragment::Fragment>::build_stacking_context_tree
+  21: <layout::fragment_tree::box_fragment::BoxFragmentWithStyle>::build_stacking_context_tree_for_children
+  22: <layout::fragment_tree::box_fragment::BoxFragment>::build_stacking_context_tree_maybe_creating_stacking_context
+  23: <layout::fragment_tree::box_fragment::BoxFragment>::build_stacking_context_tree
+  24: <layout::fragment_tree::fragment::Fragment>::build_stacking_context_tree
+  25: <layout::fragment_tree::box_fragment::BoxFragmentWithStyle>::build_stacking_context_tree_for_children
+  26: <layout::fragment_tree::box_fragment::BoxFragment>::build_stacking_context_tree_maybe_creating_stacking_context
+  27: <layout::fragment_tree::box_fragment::BoxFragment>::build_stacking_context_tree
+  28: <layout::fragment_tree::fragment::Fragment>::build_stacking_context_tree
+  29: <layout::fragment_tree::fragment::Fragment>::build_stacking_context_tree
+  30: <layout::fragment_tree::box_fragment::BoxFragmentWithStyle>::build_stacking_context_tree_for_children
+  31: <layout::fragment_tree::box_fragment::BoxFragment>::build_stacking_context_tree_maybe_creating_stacking_context
+  32: <layout::fragment_tree::box_fragment::BoxFragment>::build_stacking_context_tree
+  33: <layout::fragment_tree::fragment::Fragment>::build_stacking_context_tree
+  34: <layout::fragment_tree::box_fragment::BoxFragmentWithStyle>::build_stacking_context_tree_for_children
+  35: <layout::fragment_tree::box_fragment::BoxFragment>::build_stacking_context_tree_maybe_creating_stacking_context
+  36: <layout::fragment_tree::box_fragment::BoxFragment>::build_stacking_context_tree
+  37: <layout::fragment_tree::fragment::Fragment>::build_stacking_context_tree
+  38: <layout::fragment_tree::fragment::Fragment>::build_stacking_context_tree
+  39: <layout::fragment_tree::box_fragment::BoxFragmentWithStyle>::build_stacking_context_tree_for_children
+  40: <layout::fragment_tree::box_fragment::BoxFragment>::build_stacking_context_tree_maybe_creating_stacking_context
+  41: <layout::fragment_tree::box_fragment::BoxFragment>::build_stacking_context_tree
+  42: <layout::fragment_tree::fragment::Fragment>::build_stacking_context_tree
+  43: <layout::fragment_tree::box_fragment::BoxFragmentWithStyle>::build_stacking_context_tree_for_children
+  44: <layout::fragment_tree::box_fragment::BoxFragment>::build_stacking_context_tree_maybe_creating_stacking_context
+  45: <layout::fragment_tree::box_fragment::BoxFragment>::build_stacking_context_tree
+  46: <layout::fragment_tree::fragment::Fragment>::build_stacking_context_tree
+  47: <layout::fragment_tree::box_fragment::BoxFragmentWithStyle>::build_stacking_context_tree_for_children
+  48: <layout::fragment_tree::box_fragment::BoxFragment>::build_stacking_context_tree_maybe_creating_stacking_context
+  49: <layout::fragment_tree::box_fragment::BoxFragment>::build_stacking_context_tree
+  50: <layout::layout_impl::LayoutThread>::build_stacking_context_tree
+  51: <layout::layout_impl::LayoutThread>::handle_reflow
+  52: <layout::layout_impl::LayoutThread as layout_api::Layout>::reflow
+  53: <script::dom::window::window::Window>::reflow
+  54: <script::dom::node::node::Node>::border_box
+  55: <script::dom::element::element::Element>::scroll_into_view_with_options::{closure#0}
+  56: <script::dom::element::element::Element>::scroll_into_view_with_options
+  57: <script::dom::html::htmlelement::HTMLElement as script_bindings::codegen::GenericBindings::HTMLElementBinding::HTMLElement_Binding::HTMLElementMethods<script::dom::bindings::codegen::DomTypeHolder::DomTypeHolder>>::Focus
+  58: <script::dom::html::form_controls::htmltextareaelement::HTMLTextAreaElement as script::dom::form::validation::Validatable>::report_validity
+  59: script_bindings::codegen::GenericBindings::HTMLTextAreaElementBinding::HTMLTextAreaElement_Binding::reportValidity::<script::dom::bindings::codegen::DomTypeHolder::DomTypeHolder>::{closure#0}
+  60: mozjs::panic::wrap_panic
+  61: script_bindings::codegen::GenericBindings::HTMLTextAreaElementBinding::HTMLTextAreaElement_Binding::reportValidity::<script::dom::bindings::codegen::DomTypeHolder::DomTypeHolder>
+  62: CallJitMethodOp
+  63: script_bindings::utils::generic_call::<script::dom::bindings::codegen::DomTypeHolder::DomTypeHolder, false>
+  64: script_bindings::utils::generic_method::<script::dom::bindings::codegen::DomTypeHolder::DomTypeHolder, script_bindings::utils::call_policies::CrossOriginCallable, false>
+  65: _ZN2js23InternalCallOrConstructEP9JSContextRKN2JS8CallArgsENS_14MaybeConstructENS_10CallReasonE
+  66: _ZN2js9InterpretEP9JSContextRNS_8RunStateE
+  67: _ZN2js9RunScriptEP9JSContextRNS_8RunStateE
+  68: _ZN2js23InternalCallOrConstructEP9JSContextRKN2JS8CallArgsENS_14MaybeConstructENS_10CallReasonE
+  69: _ZN2js4CallEP9JSContextN2JS6HandleINS2_5ValueEEES5_RKNS_13AnyInvokeArgsENS2_13MutableHandleIS4_EENS_10CallReasonE
+  70: _ZN2JS4CallEP9JSContextNS_6HandleINS_5ValueEEES4_RKNS_16HandleValueArrayENS_13MutableHandleIS3_EE
+  71: script_bindings::callback::call_setup::<script::dom::bindings::codegen::DomTypeHolder::DomTypeHolder, script_bindings::codegen::GenericBindings::EventHandlerBinding::EventHandlerNonNull<script::dom::bindings::codegen::DomTypeHolder::DomTypeHolder>, core::result::Result<(), script_bindings::error::Error>, <script_bindings::codegen::GenericBindings::EventHandlerBinding::EventHandlerNonNull<script::dom::bindings::codegen::DomTypeHolder::DomTypeHolder>>::Call_<script::dom::event::eventtarget::EventTarget>::{closure#0}>::{closure#0}::{closure#0}
+  72: script::dom::event::event::inner_invoke
+  73: script::dom::event::event::invoke
+  74: <script::dom::event::event::Event>::dispatch_inner
+  75: <script_bindings::tasks::CancellableTask<<script::dom::document::document::Document>::queue_document_completion::fire_load_event<<script::dom::document::document::Document>::queue_document_completion::{closure#0}>> as script_bindings::tasks::TaskBox>::run_box
+  76: <script::event_loop::script_thread::ScriptThread>::handle_msg_from_script
+  77: <script::event_loop::script_thread::ScriptThread>::handle_message::{closure#0}
+  78: <script::event_loop::script_thread::ScriptThread>::handle_message
+  79: <profile_traits::mem::ProfilerChan>::run_with_memory_reporting::<<script::event_loop::script_thread::ScriptThread as layout_api::ScriptThreadFactory>::create::{closure#0}::{closure#1}, script::messaging::CommonScriptMsg::CollectReports, script::messaging::CommonScriptMsg, script::messaging::ScriptEventLoopSender>
+  80: std::sys::backtrace::__rust_begin_short_backtrace::<<script::event_loop::script_thread::ScriptThread as layout_api::ScriptThreadFactory>::create::{closure#0}, ()>
+  81: <std::thread::lifecycle::spawn_unchecked<<script::event_loop::script_thread::ScriptThread as layout_api::ScriptThreadFactory>::create::{closure#0}, ()>::{closure#1} as core::ops::function::FnOnce<()>>::call_once::{shim:vtable#0}
+  82: <std::sys::thread::unix::Thread>::new::thread_start
+  83: <unknown>
+  84: <unknown>
