@@ -1,0 +1,14 @@
+<script>
+function freememory() {
+}
+function jsfuzzer() {
+try { /* newvar{var00021:AudioContext} */ var var00021 = new AudioContext(); } catch(e) { }
+try { /* newvar{var00020:MediaStreamAudioDestinationNode} */ var var00020 = new MediaStreamAudioDestinationNode(var00021); } catch(e) { }
+try { /* newvar{var00019:AudioNode} */ var var00019 = var00020; } catch(e) { }
+try { /* newvar{var00018:BaseAudioContext} */ var var00018 = var00019.context; } catch(e) { }
+try { /* newvar{var00017:AudioDestinationNode} */ var var00017 = var00018.destination; } catch(e) { }
+try { /* newvar{var00016:AudioNode} */ var var00016 = var00017; } catch(e) { }
+try { /* newvar{var00015:AudioNode} */ var var00015 = var00016.connect(var00019); } catch(e) { }
+}
+</script>
+<body onload=jsfuzzer()>

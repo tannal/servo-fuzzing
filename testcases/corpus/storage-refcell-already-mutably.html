@@ -1,0 +1,26 @@
+<script>
+function freememory() {
+}
+function GetVariable(fuzzervars, var_type) { if(fuzzervars[var_type]) { return fuzzervars[var_type]; } else { return null; }}
+function SetVariable(fuzzervars, var_name, var_type) { fuzzervars[var_type] = var_name; }
+function jsfuzzer() {
+var fuzzervars = {};
+try { /* newvar{var00012:Element} */ var var00012 = document.scrollingElement; } catch(e) { }
+try { if (!var00012) { var00012 = GetVariable(fuzzervars, 'Element'); } else { SetVariable(fuzzervars, var00012, 'Element'); SetVariable(fuzzervars, var00012, 'Node;');  } } catch(e) { }
+try { /* newvar{var00039:DOMWindow} */ var var00039 = window; } catch(e) { }
+try { /* newvar{var00038:Performance} */ var var00038 = var00039.performance; } catch(e) { }
+try { /* newvar{var00037:PerformanceTiming} */ var var00037 = var00038.timing; } catch(e) { }
+try { /* newvar{var00036:unsigned} */ var var00036 = var00037.domContentLoadedEventStart; } catch(e) { }
+try { if (!var00036) { var00036 = GetVariable(fuzzervars, 'unsigned'); } else { SetVariable(fuzzervars, var00036, 'unsigned');  } } catch(e) { }
+try { /* newvar{var00080:unsigned} */ var var00080 = var00081.COMPRESSED_SRGB8_ALPHA8_ETC2_EAC; } catch(e) { }
+try { if (!var00080) { var00080 = GetVariable(fuzzervars, 'unsigned'); } else { SetVariable(fuzzervars, var00080, 'unsigned');  } } catch(e) { }
+try { /* newvar{var00088:WebGLRenderingContext} */ var var00088 = htmlvar00008.getContext("webgl"); } catch(e) { }
+try { /* newvar{var00121:Element} */ var var00121 = var00012.querySelector("htmlvar00003"); } catch(e) { }
+try { if (!var00121) { var00121 = GetVariable(fuzzervars, 'Element'); } else { SetVariable(fuzzervars, var00121, 'Element'); SetVariable(fuzzervars, var00121, 'Node;');  } } catch(e) { }
+try { var00121.setAttribute("accesskey", "" + String.fromCharCode(56) + ""); } catch(e) { }
+try { htmlvar00008.width = var00080; } catch(e) { }
+try { var00121.setAttribute("accesskey", "" + String.fromCharCode(96) + ""); } catch(e) { }
+}
+</script>
+<body onload=jsfuzzer()>
+<canvas id="htmlvar00008" contenteditable="inherit" style="-webkit-margin-end: 1px; mso-font-kerning: 75pt; columns: -1; scroll-snap-destination: 0 1px; flex-flow: column-reverse wrap" tabindex="0" width="0" height="86" hreflang="dje" version="1" loopend="0" seed="0" marginwidth="76">
