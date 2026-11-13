@@ -36,6 +36,52 @@
         "tiny_skia_path"
       ],
       "issue": "https://github.com/servo/servo/issues/46338"
+    },
+    {
+      "id": "issue-49527",
+      "message": "LengthPercentage not found",
+      "source_file": "style/servo/attr.rs",
+      "stack_frames": [
+        "style/servo/attr.rs"
+      ],
+      "issue": "https://github.com/servo/servo/issues/49527"
+    },
+    {
+      "id": "issue-49290",
+      "message": "NaN should be between 0 and 1",
+      "source_file": "webrender_api-0.70.0/src/color.rs",
+      "stack_frames": [
+        "webrender_api-0.70.0/src/color.rs"
+      ],
+      "issue": "https://github.com/servo/servo/issues/49290"
+    },
+    {
+      "id": "issue-46252",
+      "message": "assertion failed: distance_to_stack_bottom <= max_allowable_distance",
+      "source_file": "style/context.rs",
+      "stack_frames": [
+        "style/context.rs"
+      ],
+      "issue": "https://github.com/servo/servo/issues/46252"
+    },
+    {
+      "id": "issue-44574",
+      "message": "assertion failed: JS_IsExceptionPending(*cx)",
+      "source_file": "components/script/dom/bindings/error.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace",
+        "script::dom::bindings::error::throw_dom_exception"
+      ],
+      "issue": "https://github.com/servo/servo/issues/44574"
+    },
+    {
+      "id": "issue-36700",
+      "message": "assertion failed: !self.loader.borrow().events_inhibited()",
+      "source_file": "components/script/dom/document.rs",
+      "stack_frames": [
+        "components/script/dom/document.rs"
+      ],
+      "issue": "https://github.com/servo/servo/issues/36700"
     }
   ]
 }

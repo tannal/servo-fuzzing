@@ -1,5 +1,1498 @@
 {
   "schema_version": 1,
-  "signatures": []
+  "signatures": [
+    {
+      "id": "issue-49522",
+      "message": "Formatting argument out of range",
+      "source_file": "components/script/dom/console.rs",
+      "stack_frames": [
+        "components/script/dom/console.rs"
+      ],
+      "issue": "https://github.com/servo/servo/issues/49522"
+    },
+    {
+      "id": "issue-49428",
+      "message": "assertion failed: self.close_watcher.borrow().is_none()",
+      "source_file": "components/script/dom/html/interactive/htmldialogelement.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace::<std::panicking::panic_handler::{closure#0}, !>",
+        "<script::dom::html::interactive::htmldialogelement::HTMLDialogElement>::dialog_setup_steps"
+      ],
+      "issue": "https://github.com/servo/servo/issues/49428"
+    },
+    {
+      "id": "issue-47781",
+      "message": "Must always be active",
+      "source_file": "components/script/dom/window/windowproxy.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace::<std::panicking::panic_handler::{closure#0}, !>",
+        "core::option::expect_failed"
+      ],
+      "issue": "https://github.com/servo/servo/issues/47781"
+    },
+    {
+      "id": "issue-47336",
+      "message": "internal error: entered unreachable code: The image should always be insertable.",
+      "source_file": "components/script/dom/execcommand/commands/insertimage.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace::<std::panicking::panic_handler::{closure#0}, !>",
+        "<script::dom::execcommand::basecommand::CommandName>::execute"
+      ],
+      "issue": "https://github.com/servo/servo/issues/47336"
+    },
+    {
+      "id": "issue-47333",
+      "message": "internal error: entered unreachable code: Should always be able to extend the selection.",
+      "source_file": "components/script/dom/execcommand/commands/inserthorizontalrule.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace::<std::panicking::panic_handler::{closure#0}, !>",
+        "<script::dom::execcommand::basecommand::CommandName>::execute"
+      ],
+      "issue": "https://github.com/servo/servo/issues/47333"
+    },
+    {
+      "id": "issue-47150",
+      "message": "Must always have an active range",
+      "source_file": "components/script/dom/execcommand/contenteditable/node.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace::<std::panicking::panic_handler::{closure#0}, !>",
+        "core::option::expect_failed"
+      ],
+      "issue": "https://github.com/servo/servo/issues/47150"
+    },
+    {
+      "id": "issue-47148",
+      "message": "bug: unable to map mix-blend content into parent",
+      "source_file": "webrender-0.70.0/src/picture_composite_mode.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace::<std::panicking::panic_handler::{closure#0}, !>",
+        "core::option::expect_failed"
+      ],
+      "issue": "https://github.com/servo/servo/issues/47148"
+    },
+    {
+      "id": "issue-46887",
+      "message": "called `Result::unwrap()` on an `Err` value: SetPassword",
+      "source_file": "components/script/dom/xmlhttprequest/xmlhttprequest.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace::<std::panicking::panic_handler::{closure#0}, !>",
+        "core::result::unwrap_failed"
+      ],
+      "issue": "https://github.com/servo/servo/issues/46887"
+    },
+    {
+      "id": "issue-46884",
+      "message": "called `Option::unwrap()` on a `None` value",
+      "source_file": "style/sharing/mod.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace::<std::panicking::panic_handler::{closure#0}, !>",
+        "core::option::unwrap_failed"
+      ],
+      "issue": "https://github.com/servo/servo/issues/46884"
+    },
+    {
+      "id": "issue-46883",
+      "message": "Unstyled layout node?",
+      "source_file": "components/script/layout_dom/servo_layout_element.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace::<std::panicking::panic_handler::{closure#0}, !>",
+        "core::option::expect_failed"
+      ],
+      "issue": "https://github.com/servo/servo/issues/46883"
+    },
+    {
+      "id": "issue-46655",
+      "message": "called `Option::unwrap()` on a `None` value",
+      "source_file": "tiny-skia-path-0.12.0/src/rect.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace::<std::panicking::panic_handler::{closure#0}, !>",
+        "core::option::unwrap_failed"
+      ],
+      "issue": "https://github.com/servo/servo/issues/46655"
+    },
+    {
+      "id": "issue-46337",
+      "message": "assertion failed: src.width == map.width && src.width == dest.width",
+      "source_file": "resvg-0.47.0/src/filter/displacement_map.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace::<std::panicking::panic_handler::{closure#0}, !>",
+        "resvg::filter::displacement_map::apply"
+      ],
+      "issue": "https://github.com/servo/servo/issues/46337"
+    },
+    {
+      "id": "issue-46336",
+      "message": "called `Option::unwrap()` on a `None` value",
+      "source_file": "components/script/links.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace::<std::panicking::panic_handler::{closure#0}, !>",
+        "core::option::unwrap_failed"
+      ],
+      "issue": "https://github.com/servo/servo/issues/46336"
+    },
+    {
+      "id": "issue-46335",
+      "message": "assertion failed: *progress >= n",
+      "source_file": "style/servo/animation.rs",
+      "stack_frames": [
+        "core::ops::function::Fn::call",
+        "<alloc::boxed::Box<dyn for<'a, 'b> core::ops::function::Fn<"
+      ],
+      "issue": "https://github.com/servo/servo/issues/46335"
+    },
+    {
+      "id": "issue-46304",
+      "message": "internal error: entered unreachable code: Found hoisted box with missing fragment.",
+      "source_file": "components/layout/display_list/stacking_context.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace::<std::panicking::panic_handler::{closure#0}, !>",
+        "layout::display_list::stacking_context::<impl layout::fragment_tree::fragment::Fragment>::build_stacking_context_tree"
+      ],
+      "issue": "https://github.com/servo/servo/issues/46304"
+    },
+    {
+      "id": "issue-46303",
+      "message": "assertion failed: !self.is_render_blocked()",
+      "source_file": "components/script/dom/document/document.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace::<std::panicking::panic_handler::{closure#0}, !>",
+        "<script::dom::document::document::Document>::update_the_rendering"
+      ],
+      "issue": "https://github.com/servo/servo/issues/46303"
+    },
+    {
+      "id": "issue-46235",
+      "message": "Must always have a parent",
+      "source_file": "components/script/dom/execcommand/commands/delete.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace::<std::panicking::panic_handler::{closure#0}, !>",
+        "core::option::expect_failed"
+      ],
+      "issue": "https://github.com/servo/servo/issues/46235"
+    },
+    {
+      "id": "issue-46234",
+      "message": "index out of bounds: the len is 1 but the index is 32769",
+      "source_file": "taffy-0.11.0/src/compute/grid/types/named.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace::<std::panicking::panic_handler::{closure#0}, !>",
+        "taffy::compute::grid::types::named::NamedLineResolver<S>::find_line_index::get_line"
+      ],
+      "issue": "https://github.com/servo/servo/issues/46234"
+    },
+    {
+      "id": "issue-46203",
+      "message": "called `Option::unwrap()` on a `None` value",
+      "source_file": "taffy-0.11.0/src/compute/grid/types/cell_occupancy.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace::<std::panicking::panic_handler::{closure#0}, !>",
+        "core::option::unwrap_failed"
+      ],
+      "issue": "https://github.com/servo/servo/issues/46203"
+    },
+    {
+      "id": "issue-46197",
+      "message": "JS String copy routine failed",
+      "source_file": "mozjs-0.17.0/src/conversions.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace::<std::panicking::panic_handler::{closure#0}, !>",
+        "<script_bindings::domstring::DOMString as mozjs::conversions::ToJSValConvertible>::to_jsval"
+      ],
+      "issue": "https://github.com/servo/servo/issues/46197"
+    },
+    {
+      "id": "issue-46196",
+      "message": "details{ content: repeating-radial-gradient",
+      "source_file": "left,rgb(7,2,1",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace::<std::panicking::panic_handler::{closure#0}, !>",
+        "layout::display_list::paint_traversal::PaintTraversal<Handler>::traverse_fragment_in_a_line_box"
+      ],
+      "issue": "https://github.com/servo/servo/issues/46196"
+    },
+    {
+      "id": "issue-46154",
+      "message": "RefCell already borrowed",
+      "source_file": "components/script/dom/document/document.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace::<std::panicking::panic_handler::{closure#0}, !>",
+        "core::cell::panic_already_borrowed"
+      ],
+      "issue": "https://github.com/servo/servo/issues/46154"
+    },
+    {
+      "id": "issue-46153",
+      "message": "called `Option::unwrap()` on a `None` value",
+      "source_file": "components/net/image_cache.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace::<std::panicking::panic_handler::{closure#0}, !>",
+        "core::option::unwrap_failed"
+      ],
+      "issue": "https://github.com/servo/servo/issues/46153"
+    },
+    {
+      "id": "issue-46152",
+      "message": "called `Option::unwrap()` on a `None` value",
+      "source_file": "tiny-skia-path-0.12.0/src/rect.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace::<std::panicking::panic_handler::{closure#0}, !>",
+        "core::option::unwrap_failed"
+      ],
+      "issue": "https://github.com/servo/servo/issues/46152"
+    },
+    {
+      "id": "issue-46149",
+      "message": "called `Option::unwrap()` on a `None` value",
+      "source_file": "style/matching.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace::<std::panicking::panic_handler::{closure#0}, !>",
+        "core::option::unwrap_failed"
+      ],
+      "issue": "https://github.com/servo/servo/issues/46149"
+    },
+    {
+      "id": "issue-46146",
+      "message": "Tried to set a size for an unknown <iframe>",
+      "source_file": "components/script/iframe_collection.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace::<std::panicking::panic_handler::{closure#0}, !>",
+        "core::option::expect_failed"
+      ],
+      "issue": "https://github.com/servo/servo/issues/46146"
+    },
+    {
+      "id": "issue-46145",
+      "message": "called `Result::unwrap()` on an `Err` value: Disconnected",
+      "source_file": "components/shared/net/lib.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace::<std::panicking::panic_handler::{closure#0}, !>",
+        "core::result::unwrap_failed"
+      ],
+      "issue": "https://github.com/servo/servo/issues/46145"
+    },
+    {
+      "id": "issue-46109",
+      "message": "internal error: entered unreachable code: Found hoisted box with missing fragment.",
+      "source_file": "components/layout/display_list/stacking_context.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace::<std::panicking::panic_handler::{closure#0}, !>",
+        "layout::display_list::stacking_context::<impl layout::fragment_tree::fragment::Fragment>::build_stacking_context_tree"
+      ],
+      "issue": "https://github.com/servo/servo/issues/46109"
+    },
+    {
+      "id": "issue-46108",
+      "message": "&*ancestor == common_ancestor)",
+      "source_file": "components/script/dom/node/node.rs",
+      "stack_frames": [
+        "core::ops::function::Fn::call",
+        "<alloc::boxed::Box<dyn for<'a, 'b> core::ops::function::Fn<"
+      ],
+      "issue": "https://github.com/servo/servo/issues/46108"
+    },
+    {
+      "id": "issue-46081",
+      "message": "attempt to add with overflow",
+      "source_file": "taffy-0.11.0/src/compute/grid/explicit_grid.rs",
+      "stack_frames": [
+        "core::ops::function::Fn::call",
+        "<alloc::boxed::Box<dyn for<'a, 'b> core::ops::function::Fn<"
+      ],
+      "issue": "https://github.com/servo/servo/issues/46081"
+    },
+    {
+      "id": "issue-46080",
+      "message": "attempt to add with overflow",
+      "source_file": "resvg-0.47.0/src/filter/turbulence.rs",
+      "stack_frames": [
+        "core::ops::function::Fn::call",
+        "<alloc::boxed::Box<dyn for<'a, 'b> core::ops::function::Fn<"
+      ],
+      "issue": "https://github.com/servo/servo/issues/46080"
+    },
+    {
+      "id": "issue-46026",
+      "message": "index out of bounds: the len is 0 but the index is 1",
+      "source_file": "components/layout/display_list/clip.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace::<std::panicking::panic_handler::{closure#0}, !>",
+        "layout::display_list::hit_test::HitTest::hit_test_clip_id"
+      ],
+      "issue": "https://github.com/servo/servo/issues/46026"
+    },
+    {
+      "id": "issue-46025",
+      "message": "index out of bounds: the len is 1 but the index is 1",
+      "source_file": "components/script/dom/css/cssrulelist.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace::<std::panicking::panic_handler::{closure#0}, !>",
+        "<script::dom::css::cssrulelist::CSSRuleList>::item"
+      ],
+      "issue": "https://github.com/servo/servo/issues/46025"
+    },
+    {
+      "id": "issue-46024",
+      "message": "Unstyled layout node?",
+      "source_file": "components/script/layout_dom/servo_layout_element.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace::<std::panicking::panic_handler::{closure#0}, !>",
+        "core::option::expect_failed"
+      ],
+      "issue": "https://github.com/servo/servo/issues/46024"
+    },
+    {
+      "id": "issue-46023",
+      "message": "index out of bounds: the len is 2 but the index is 2",
+      "source_file": "components/shared/paint/display_list.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace::<std::panicking::panic_handler::{closure#0}, !>",
+        "paint_api::display_list::ScrollTree::cumulative_node_transform"
+      ],
+      "issue": "https://github.com/servo/servo/issues/46023"
+    },
+    {
+      "id": "issue-46022",
+      "message": "slice index starts at 3 but ends at 2",
+      "source_file": "taffy-0.11.0/src/compute/grid/types/grid_item.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace::<std::panicking::panic_handler::{closure#0}, !>",
+        "core::slice::index::slice_index_fail"
+      ],
+      "issue": "https://github.com/servo/servo/issues/46022"
+    },
+    {
+      "id": "issue-46021",
+      "message": "Should never try to get clip before adding it to WebRender display list",
+      "source_file": "components/layout/display_list/mod.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace::<std::panicking::panic_handler::{closure#0}, !>",
+        "core::option::expect_failed"
+      ],
+      "issue": "https://github.com/servo/servo/issues/46021"
+    },
+    {
+      "id": "issue-45981",
+      "message": "animate should only be used for interpolating or accumulating transforms",
+      "source_file": "style/values/animated/transform.rs",
+      "stack_frames": [
+        "core::ops::function::Fn::call",
+        "<alloc::boxed::Box<dyn for<'a, 'b> core::ops::function::Fn<"
+      ],
+      "issue": "https://github.com/servo/servo/issues/45981"
+    },
+    {
+      "id": "issue-45950",
+      "message": "assertion failed: *progress > 1.",
+      "source_file": "style/servo/animation.rs",
+      "stack_frames": [
+        "core::ops::function::Fn::call",
+        "<alloc::boxed::Box<dyn for<'a, 'b> core::ops::function::Fn<"
+      ],
+      "issue": "https://github.com/servo/servo/issues/45950"
+    },
+    {
+      "id": "issue-45949",
+      "message": "attempt to subtract with overflow",
+      "source_file": "taffy-0.11.0/src/compute/grid/types/coordinates.rs",
+      "stack_frames": [
+        "core::ops::function::Fn::call",
+        "<alloc::boxed::Box<dyn for<'a, 'b> core::ops::function::Fn<"
+      ],
+      "issue": "https://github.com/servo/servo/issues/45949"
+    },
+    {
+      "id": "issue-45947",
+      "message": "&*ancestor == common_ancestor)",
+      "source_file": "components/script/dom/node/node.rs",
+      "stack_frames": [
+        "core::ops::function::Fn::call",
+        "<alloc::boxed::Box<dyn for<'a, 'b> core::ops::function::Fn<"
+      ],
+      "issue": "https://github.com/servo/servo/issues/45947"
+    },
+    {
+      "id": "issue-45945",
+      "message": "NaN should be between 0 and 1",
+      "source_file": "webrender_api-0.69.0/src/color.rs",
+      "stack_frames": [
+        "core::ops::function::Fn::call",
+        "<alloc::boxed::Box<dyn for<'a, 'b> core::ops::function::Fn<"
+      ],
+      "issue": "https://github.com/servo/servo/issues/45945"
+    },
+    {
+      "id": "issue-45939",
+      "message": "OriginZero grid line cannot be less than the number of negative grid lines",
+      "source_file": "taffy-0.11.0/src/compute/grid/types/coordinates.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace::<std::panicking::panic_handler::{closure#0}, !>",
+        "taffy::compute::grid::types::coordinates::OriginZeroLine::into_track_vec_index::{{closure}}"
+      ],
+      "issue": "https://github.com/servo/servo/issues/45939"
+    },
+    {
+      "id": "issue-45938",
+      "message": "OriginZero grid line cannot be more than the number of positive grid lines",
+      "source_file": "taffy-0.11.0/src/compute/grid/types/coordinates.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace::<std::panicking::panic_handler::{closure#0}, !>",
+        "taffy::compute::grid::types::coordinates::OriginZeroLine::into_track_vec_index::{{closure}}"
+      ],
+      "issue": "https://github.com/servo/servo/issues/45938"
+    },
+    {
+      "id": "issue-45881",
+      "message": "called `Result::unwrap()` on an `Err` value: TryFromIntError(())",
+      "source_file": "components/layout/taffy/stylo_taffy/convert.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace::<std::panicking::panic_handler::{closure#0}, !>",
+        "core::result::unwrap_failed"
+      ],
+      "issue": "https://github.com/servo/servo/issues/45881"
+    },
+    {
+      "id": "issue-45795",
+      "message": "internal error: entered unreachable code",
+      "source_file": "components/script/dom/node/node.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace::<std::panicking::panic_handler::{closure#0}, !>",
+        "<script::dom::node::node::Node>::type_id"
+      ],
+      "issue": "https://github.com/servo/servo/issues/45795"
+    },
+    {
+      "id": "issue-45794",
+      "message": "called `Option::unwrap()` on a `None` value",
+      "source_file": "style/matching.rs",
+      "stack_frames": [
+        "style/matching.rs"
+      ],
+      "issue": "https://github.com/servo/servo/issues/45794"
+    },
+    {
+      "id": "issue-45793",
+      "message": "assertion failed: !will_break",
+      "source_file": "components/layout/flow/inline/mod.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace::<std::panicking::panic_handler::{closure#0}, !>",
+        "layout::flow::inline::InlineFormattingContextLayout::commit_current_segment_to_line"
+      ],
+      "issue": "https://github.com/servo/servo/issues/45793"
+    },
+    {
+      "id": "issue-45792",
+      "message": "internal error: entered unreachable code: Tried to remove unknown id or name entry: x36",
+      "source_file": "components/script/dom/tree_ordered_index_map.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace::<std::panicking::panic_handler::{closure#0}, !>",
+        "<script::dom::tree_ordered_index_map::TreeOrderedIndexMap>::remove"
+      ],
+      "issue": "https://github.com/servo/servo/issues/45792"
+    },
+    {
+      "id": "issue-45733",
+      "message": "internal error: entered unreachable code",
+      "source_file": "webrender-0.69.0/src/tile_cache/mod.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace::<std::panicking::panic_handler::{closure#0}, !>",
+        "webrender::frame_builder::FrameBuilder::build"
+      ],
+      "issue": "https://github.com/servo/servo/issues/45733"
+    },
+    {
+      "id": "issue-45732",
+      "message": "bug: this is an unexpected case - please open a bug and talk to #gfx team!",
+      "source_file": "webrender-0.69.0/src/spatial_tree.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace::<std::panicking::begin_panic<&str>::{closure#0}, !>",
+        "webrender::spatial_tree::SpatialTree::get_relative_transform_with_face"
+      ],
+      "issue": "https://github.com/servo/servo/issues/45732"
+    },
+    {
+      "id": "issue-45175",
+      "message": "assertion failed: src1.width == src2.width && src1.width == dest.width",
+      "source_file": "resvg-0.47.0/src/filter/composite.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace::<std::panicking::panic_handler::{closure#0}, !>",
+        "resvg::filter::composite::arithmetic"
+      ],
+      "issue": "https://github.com/servo/servo/issues/45175"
+    },
+    {
+      "id": "issue-45174",
+      "message": "Should never call this before any glyphs have been added.",
+      "source_file": "components/fonts/glyph.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace::<std::panicking::panic_handler::{closure#0}, !>",
+        "core::option::expect_failed"
+      ],
+      "issue": "https://github.com/servo/servo/issues/45174"
+    },
+    {
+      "id": "issue-45172",
+      "message": "Should have at least one SharedInlineStyle for the root of an IFC",
+      "source_file": "components/layout/flow/inline/mod.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace::<std::panicking::panic_handler::{closure#0}, !>",
+        "core::option::expect_failed"
+      ],
+      "issue": "https://github.com/servo/servo/issues/45172"
+    },
+    {
+      "id": "issue-45171",
+      "message": "assertion failed: src.width == dest.width && src.height == dest.height",
+      "source_file": "resvg-0.47.0/src/filter/lighting.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace::<std::panicking::panic_handler::{closure#0}, !>",
+        "resvg::filter::apply_inner"
+      ],
+      "issue": "https://github.com/servo/servo/issues/45171"
+    },
+    {
+      "id": "issue-45170",
+      "message": "Trying to collect rules for a detached pseudo-element",
+      "source_file": "style/dom.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace::<std::panicking::panic_handler::{closure#0}, !>",
+        "core::option::expect_failed"
+      ],
+      "issue": "https://github.com/servo/servo/issues/45170"
+    },
+    {
+      "id": "issue-45168",
+      "message": "called `Option::unwrap()` on a `None` value",
+      "source_file": "tiny-skia-0.12.0/src/alpha_runs.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace::<std::panicking::panic_handler::{closure#0}, !>",
+        "core::option::unwrap_failed"
+      ],
+      "issue": "https://github.com/servo/servo/issues/45168"
+    },
+    {
+      "id": "issue-45167",
+      "message": "right: 0",
+      "source_file": "mozjs_sys-140.10.1-0/src/jsval.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace::<std::panicking::panic_handler::{closure#0}, !>",
+        "<script::dom::abortsignal::AbortSignal as script_bindings::weakref::WeakReferenceable>::downgrade"
+      ],
+      "issue": "https://github.com/servo/servo/issues/45167"
+    },
+    {
+      "id": "issue-45085",
+      "message": "Should always have at least one SharedInlineStyles",
+      "source_file": "components/layout/flow/inline/construct.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace::<std::panicking::panic_handler::{closure#0}, !>",
+        "core::option::expect_failed"
+      ],
+      "issue": "https://github.com/servo/servo/issues/45085"
+    },
+    {
+      "id": "issue-45008",
+      "message": "index out of bounds: the len is 2 but the index is 2",
+      "source_file": "style/servo/animation.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace::<std::panicking::panic_handler::{closure#0}, !>",
+        "style::servo::animation::Animation::next_relevant_keyframe_for_property_in_direction"
+      ],
+      "issue": "https://github.com/servo/servo/issues/45008"
+    },
+    {
+      "id": "issue-44990",
+      "message": "already mutably borrowed",
+      "source_file": "atomic_refcell-0.1.14/src/lib.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace::<std::panicking::panic_handler::{closure#0}, !>",
+        "style::shared_lock::SharedRwLock::read"
+      ],
+      "issue": "https://github.com/servo/servo/issues/44990"
+    },
+    {
+      "id": "issue-44868",
+      "message": "called `Option::unwrap()` on a `None` value",
+      "source_file": "components/script/dom/window.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace::<std::panicking::panic_handler::{closure#0}, !>",
+        "core::option::unwrap_failed"
+      ],
+      "issue": "https://github.com/servo/servo/issues/44868"
+    },
+    {
+      "id": "issue-44865",
+      "message": "internal error: entered unreachable code: Got unexpected FocusEvent Atom('' type=static)",
+      "source_file": "components/script/dom/html/input_element/mod.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace::<std::panicking::panic_handler::{closure#0}, !>",
+        "<script::dom::html::input_element::HTMLInputElement as script::dom::virtualmethods::VirtualMethods>::handle_event"
+      ],
+      "issue": "https://github.com/servo/servo/issues/44865"
+    },
+    {
+      "id": "issue-44742",
+      "message": "Must always have a parent",
+      "source_file": "components/script/dom/execcommand/commands/delete.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace::<std::panicking::panic_handler::{closure#0}, !>",
+        "core::option::expect_failed"
+      ],
+      "issue": "https://github.com/servo/servo/issues/44742"
+    },
+    {
+      "id": "issue-44720",
+      "message": "assertion failed: !self.aborted.get()",
+      "source_file": "components/script/dom/servoparser/mod.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace::<std::panicking::panic_handler::{closure#0}, !>",
+        "<script::dom::servoparser::ServoParser>::abort"
+      ],
+      "issue": "https://github.com/servo/servo/issues/44720"
+    },
+    {
+      "id": "issue-44714",
+      "message": "index out of bounds: the len is 0 but the index is 0",
+      "source_file": "components/script/dom/element/attributes/storage.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace::<std::panicking::panic_handler::{closure#0}, !>",
+        "<script::dom::element::attributes::storage::AttributeStorage>::ensure_dom"
+      ],
+      "issue": "https://github.com/servo/servo/issues/44714"
+    },
+    {
+      "id": "issue-44599",
+      "message": "RefCell already borrowed",
+      "source_file": "components/script_bindings/domstring.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace",
+        "core::cell::panic_already_borrowed::do_panic::runtime"
+      ],
+      "issue": "https://github.com/servo/servo/issues/44599"
+    },
+    {
+      "id": "issue-44540",
+      "message": "internal error: entered unreachable code: Found hoisted box with missing fragment.",
+      "source_file": "components/layout/display_list/stacking_context.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace",
+        "layout::display_list::stacking_context::<impl layout::fragment_tree::fragment::Fragment>::build_stacking_context_tree"
+      ],
+      "issue": "https://github.com/servo/servo/issues/44540"
+    },
+    {
+      "id": "issue-44537",
+      "message": "Parsing shouldn't fail as descriptors are valid by construction: Syntax(None)",
+      "source_file": "components/script/dom/css/fontface.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace",
+        "core::result::unwrap_failed"
+      ],
+      "issue": "https://github.com/servo/servo/issues/44537"
+    },
+    {
+      "id": "issue-44536",
+      "message": "Should always have a StackingContextTree for offset parent queries",
+      "source_file": "components/layout/layout_impl.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace",
+        "core::option::expect_failed"
+      ],
+      "issue": "https://github.com/servo/servo/issues/44536"
+    },
+    {
+      "id": "issue-44063",
+      "message": "index out of bounds: the len is 1 but the index is 1",
+      "source_file": "components/layout/table/layout.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace",
+        "layout::table::layout::TableLayout::compute_measures"
+      ],
+      "issue": "https://github.com/servo/servo/issues/44063"
+    },
+    {
+      "id": "issue-44062",
+      "message": "index out of bounds: the len is 1 but the index is 1",
+      "source_file": "components/layout/table/layout.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace",
+        "layout::table::layout::TableLayout::compute_measures"
+      ],
+      "issue": "https://github.com/servo/servo/issues/44062"
+    },
+    {
+      "id": "issue-43193",
+      "message": "called `Result::unwrap()` on an `Err` value: \"element linking failed: BoolError { message: \\\"Failed to link elements 'queue2' and 'capsfilter2'\\\", filename: \\\"/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/gstreamer-0.25.0/src/element.rs\\\", function: \\\"gstreamer::element::<impl gstreamer::auto::element::Element>::link_many\\\", line: 28 }\"",
+      "source_file": "components/media/backends/gstreamer/lib.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace",
+        "core::result::unwrap_failed"
+      ],
+      "issue": "https://github.com/servo/servo/issues/43193"
+    },
+    {
+      "id": "issue-43192",
+      "message": "index out of bounds: the len is 2 but the index is 2",
+      "source_file": "components/shared/paint/display_list.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace",
+        "paint_api::display_list::ScrollTree::cumulative_node_transform"
+      ],
+      "issue": "https://github.com/servo/servo/issues/43192"
+    },
+    {
+      "id": "issue-42854",
+      "message": "assertion failed: count_cell.get() > 0",
+      "source_file": "components/script/dom/document.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace",
+        "script::stylesheet_loader::StylesheetContext::decrement_blockers_and_finish_load"
+      ],
+      "issue": "https://github.com/servo/servo/issues/42854"
+    },
+    {
+      "id": "issue-42477",
+      "message": "What finished?",
+      "source_file": "components/script/dom/html/htmllinkelement.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace",
+        "<script::dom::html::htmllinkelement::HTMLLinkElement as script::stylesheet_loader::StylesheetOwner>::load_finished"
+      ],
+      "issue": "https://github.com/servo/servo/issues/42477"
+    },
+    {
+      "id": "issue-42476",
+      "message": "internal error: entered unreachable code",
+      "source_file": "webrender-0.68.0/src/picture.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace",
+        "webrender::frame_builder::FrameBuilder::build"
+      ],
+      "issue": "https://github.com/servo/servo/issues/42476"
+    },
+    {
+      "id": "issue-42414",
+      "message": "PainterSurfmanDetails not found for PainterId",
+      "source_file": "components/webgl/webgl_thread.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace",
+        "core::option::expect_failed"
+      ],
+      "issue": "https://github.com/servo/servo/issues/42414"
+    },
+    {
+      "id": "issue-42292",
+      "message": "bug: unable to map mix-blend content into parent",
+      "source_file": "webrender-0.68.0/src/picture.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace",
+        "core::option::expect_failed"
+      ],
+      "issue": "https://github.com/servo/servo/issues/42292"
+    },
+    {
+      "id": "issue-42291",
+      "message": "index out of bounds: the len is 2 but the index is 2",
+      "source_file": "components/shared/paint/display_list.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace",
+        "paint_api::display_list::ScrollTree::cumulative_node_transform"
+      ],
+      "issue": "https://github.com/servo/servo/issues/42291"
+    },
+    {
+      "id": "issue-42259",
+      "message": "What finished?",
+      "source_file": "components/script/dom/html/htmllinkelement.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace",
+        "<script::dom::html::htmllinkelement::HTMLLinkElement as script::stylesheet_loader::StylesheetOwner>::load_finished"
+      ],
+      "issue": "https://github.com/servo/servo/issues/42259"
+    },
+    {
+      "id": "issue-42258",
+      "message": "called `Option::unwrap()` on a `None` value",
+      "source_file": "tiny-skia-path-0.11.4/src/rect.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace",
+        "core::option::unwrap_failed"
+      ],
+      "issue": "https://github.com/servo/servo/issues/42258"
+    },
+    {
+      "id": "issue-42217",
+      "message": "byte index 1 is not a char boundary; it is inside '\\u{4985a}' (bytes 0..4) of `񉡚`",
+      "source_file": "components/shared/base/rope.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace",
+        "core::str::slice_error_fail_rt"
+      ],
+      "issue": "https://github.com/servo/servo/issues/42217"
+    },
+    {
+      "id": "issue-42216",
+      "message": "called `Option::unwrap()` on a `None` value",
+      "source_file": "home/runner/.cargo/git/checkouts/webrender-a8b399ecb6c2da85/6cafc60/webrender/src/prim_store/image.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace",
+        "core::option::unwrap_failed"
+      ],
+      "issue": "https://github.com/servo/servo/issues/42216"
+    },
+    {
+      "id": "issue-42215",
+      "message": "index out of bounds: the len is 2 but the index is 2",
+      "source_file": "components/shared/paint/display_list.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace",
+        "paint_api::display_list::ScrollTree::cumulative_node_transform"
+      ],
+      "issue": "https://github.com/servo/servo/issues/42215"
+    },
+    {
+      "id": "issue-41231",
+      "message": "already immutably borrowed",
+      "source_file": "atomic_refcell-0.1.13/src/lib.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace",
+        "<script::layout_dom::node::ServoThreadSafeLayoutNode as layout::dom::NodeExt>::take_restyle_damage"
+      ],
+      "issue": "https://github.com/servo/servo/issues/41231"
+    },
+    {
+      "id": "issue-41207",
+      "message": "Should only call `scrollable_overflow()` after calculating overflow",
+      "source_file": "components/layout/fragment_tree/box_fragment.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace",
+        "core::option::expect_failed"
+      ],
+      "issue": "https://github.com/servo/servo/issues/41207"
+    },
+    {
+      "id": "issue-41183",
+      "message": "already mutably borrowed",
+      "source_file": "atomic_refcell-0.1.13/src/lib.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace",
+        "layout::layout_box_base::LayoutBoxBase::inline_content_sizes"
+      ],
+      "issue": "https://github.com/servo/servo/issues/41183"
+    },
+    {
+      "id": "issue-41130",
+      "message": "called `Option::unwrap()` on a `None` value",
+      "source_file": "home/runner/.cargo/git/checkouts/webrender-a8b399ecb6c2da85/6cafc60/webrender/src/prim_store/image.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace",
+        "core::option::unwrap_failed"
+      ],
+      "issue": "https://github.com/servo/servo/issues/41130"
+    },
+    {
+      "id": "issue-41085",
+      "message": "index out of bounds: the len is 0 but the index is 0",
+      "source_file": "home/runner/.cargo/git/checkouts/media-9074def3f0bdf023/b0d3b74/audio/iir_filter_node.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace",
+        "<servo_media_audio::iir_filter_node::IIRFilterNode as servo_media_audio::node::AudioNodeEngine>::process"
+      ],
+      "issue": "https://github.com/servo/servo/issues/41085"
+    },
+    {
+      "id": "issue-41083",
+      "message": "called `Result::unwrap()` on an `Err` value: RecvError",
+      "source_file": "components/script/dom/audio/mediaelementaudiosourcenode.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace",
+        "core::result::unwrap_failed"
+      ],
+      "issue": "https://github.com/servo/servo/issues/41083"
+    },
+    {
+      "id": "issue-41082",
+      "message": "Contexts must be destroyed explicitly with `destroy_context`!",
+      "source_file": "surfman-0.11.0/src/platform/generic/egl/context.rs",
+      "stack_frames": [
+        "surfman-0.11.0/src/platform/generic/egl/context.rs"
+      ],
+      "issue": "https://github.com/servo/servo/issues/41082"
+    },
+    {
+      "id": "issue-41080",
+      "message": "called `Option::unwrap()` on a `None` value",
+      "source_file": "components/script/dom/html/htmloptionscollection.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace",
+        "core::option::unwrap_failed"
+      ],
+      "issue": "https://github.com/servo/servo/issues/41080"
+    },
+    {
+      "id": "issue-41079",
+      "message": "Unknown top-level browsing context",
+      "source_file": "components/constellation/constellation.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace",
+        "core::option::expect_failed"
+      ],
+      "issue": "https://github.com/servo/servo/issues/41079"
+    },
+    {
+      "id": "issue-40735",
+      "message": "called `Result::unwrap()` on an `Err` value: Io(Os { code: 32, kind: BrokenPipe, message: \"Broken pipe\" })",
+      "source_file": "components/shared/net/lib.rs",
+      "stack_frames": [
+        "components/shared/net/lib.rs"
+      ],
+      "issue": "https://github.com/servo/servo/issues/40735"
+    },
+    {
+      "id": "issue-40734",
+      "message": "called `Result::unwrap()` on an `Err` value: \"SendError(..)\"",
+      "source_file": "home/runner/.cargo/git/checkouts/webrender-a8b399ecb6c2da85/6cafc60/webrender/src/render_backend.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace",
+        "core::result::unwrap_failed"
+      ],
+      "issue": "https://github.com/servo/servo/issues/40734"
+    },
+    {
+      "id": "issue-40731",
+      "message": "called `Option::unwrap()` on a `None` value",
+      "source_file": "style/matching.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace",
+        "core::option::unwrap_failed"
+      ],
+      "issue": "https://github.com/servo/servo/issues/40731"
+    },
+    {
+      "id": "issue-40730",
+      "message": "out of bounds. Column must be less than 1, but is 1",
+      "source_file": "grid-0.18.0/src/lib.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace",
+        "grid::Grid<T>::iter_col"
+      ],
+      "issue": "https://github.com/servo/servo/issues/40730"
+    },
+    {
+      "id": "issue-40720",
+      "message": "RefCell already borrowed",
+      "source_file": "components/script/dom/html/htmlmediaelement.rs",
+      "stack_frames": [
+        "core::ops::function::Fn::call",
+        "<alloc::boxed::Box<F,A> as core::ops::function::Fn<Args>>::call"
+      ],
+      "issue": "https://github.com/servo/servo/issues/40720"
+    },
+    {
+      "id": "issue-40719",
+      "message": "internal error: entered unreachable code",
+      "source_file": "components/script/dom/range.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace",
+        "script_bindings::codegen::GenericBindings::RangeBinding::Range_Binding::createContextualFragment::{{closure}}"
+      ],
+      "issue": "https://github.com/servo/servo/issues/40719"
+    },
+    {
+      "id": "issue-39716",
+      "message": "called `Result::unwrap()` on an `Err` value: Disconnected",
+      "source_file": "components/script/dom/windowproxy.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace",
+        "core::result::unwrap_failed"
+      ],
+      "issue": "https://github.com/servo/servo/issues/39716"
+    },
+    {
+      "id": "issue-39434",
+      "message": "RefCell already borrowed",
+      "source_file": "components/script/script_mutation_observers.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace",
+        "core::cell::panic_already_borrowed"
+      ],
+      "issue": "https://github.com/servo/servo/issues/39434"
+    },
+    {
+      "id": "issue-39147",
+      "message": "Attempting to create a 1791x38453 window/document",
+      "source_file": "home/runner/.cargo/git/checkouts/webrender-a8b399ecb6c2da85/428d64d/webrender/src/render_api.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace",
+        "webrender::render_api::window_size_sanity_check"
+      ],
+      "issue": "https://github.com/servo/servo/issues/39147"
+    },
+    {
+      "id": "issue-39145",
+      "message": "internal error: entered unreachable code",
+      "source_file": "home/runner/.cargo/git/checkouts/webrender-a8b399ecb6c2da85/428d64d/webrender/src/picture.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace",
+        "webrender::frame_builder::FrameBuilder::build"
+      ],
+      "issue": "https://github.com/servo/servo/issues/39145"
+    },
+    {
+      "id": "issue-39143",
+      "message": "index out of bounds: the len is 2 but the index is 2",
+      "source_file": "components/shared/compositing/display_list.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace",
+        "layout::query::root_transform_for_layout_node"
+      ],
+      "issue": "https://github.com/servo/servo/issues/39143"
+    },
+    {
+      "id": "issue-39142",
+      "message": "index out of bounds: the len is 1 but the index is 1",
+      "source_file": "components/layout/table/layout.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace",
+        "layout::table::layout::TableLayout::compute_measures"
+      ],
+      "issue": "https://github.com/servo/servo/issues/39142"
+    },
+    {
+      "id": "issue-39141",
+      "message": "min > max, or either was NaN. min = 0.0, max = -4277071600.0",
+      "source_file": "home/runner/.rustup/toolchains/1.89.0-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/num/f32.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace",
+        "core::f32::<impl f32>::clamp::do_panic::runtime"
+      ],
+      "issue": "https://github.com/servo/servo/issues/39141"
+    },
+    {
+      "id": "issue-38849",
+      "message": "assertion failed: src.width == map.width && src.width == dest.width",
+      "source_file": "resvg-0.45.1/src/filter/displacement_map.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace",
+        "resvg::filter::displacement_map::apply"
+      ],
+      "issue": "https://github.com/servo/servo/issues/38849"
+    },
+    {
+      "id": "issue-38848",
+      "message": "Should always have a scroll tree node when querying bounding box.",
+      "source_file": "components/layout/query.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace",
+        "core::option::expect_failed"
+      ],
+      "issue": "https://github.com/servo/servo/issues/38848"
+    },
+    {
+      "id": "issue-37855",
+      "message": "Couldn't find common ancestor",
+      "source_file": "components/script/dom/document.rs",
+      "stack_frames": [
+        "core::ops::function::Fn::call",
+        "<alloc::boxed::Box<F,A> as core::ops::function::Fn<Args>>::call"
+      ],
+      "issue": "https://github.com/servo/servo/issues/37855"
+    },
+    {
+      "id": "issue-37480",
+      "message": "called `Option::unwrap()` on a `None` value",
+      "source_file": "components/script/dom/documentorshadowroot.rs",
+      "stack_frames": [
+        "core::ops::function::Fn::call",
+        "<alloc::boxed::Box<F,A> as core::ops::function::Fn<Args>>::call"
+      ],
+      "issue": "https://github.com/servo/servo/issues/37480"
+    },
+    {
+      "id": "issue-37432",
+      "message": "Bad LinearGradient render task size: 6x0",
+      "source_file": "home/runner/.cargo/git/checkouts/webrender-a8b399ecb6c2da85/ae2477d/webrender/src/render_task.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace",
+        "rust_begin_unwind"
+      ],
+      "issue": "https://github.com/servo/servo/issues/37432"
+    },
+    {
+      "id": "issue-37430",
+      "message": "already borrowed: BorrowMutError",
+      "source_file": "components/script/dom/htmlformelement.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace",
+        "rust_begin_unwind"
+      ],
+      "issue": "https://github.com/servo/servo/issues/37430"
+    },
+    {
+      "id": "issue-37421",
+      "message": "Should only call `scrollable_overflow()` after calculating overflow",
+      "source_file": "components/layout/fragment_tree/box_fragment.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace",
+        "rust_begin_unwind"
+      ],
+      "issue": "https://github.com/servo/servo/issues/37421"
+    },
+    {
+      "id": "issue-37415",
+      "message": "called `Option::unwrap()` on a `None` value",
+      "source_file": "components/script/canvas_context.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace",
+        "rust_begin_unwind"
+      ],
+      "issue": "https://github.com/servo/servo/issues/37415"
+    },
+    {
+      "id": "issue-37414",
+      "message": "called `Option::unwrap()` on a `None` value",
+      "source_file": "components/script/dom/window.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace",
+        "rust_begin_unwind"
+      ],
+      "issue": "https://github.com/servo/servo/issues/37414"
+    },
+    {
+      "id": "issue-36995",
+      "message": "should have called ensure_path",
+      "source_file": "components/canvas/canvas_data.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace",
+        "rust_begin_unwind"
+      ],
+      "issue": "https://github.com/servo/servo/issues/36995"
+    },
+    {
+      "id": "issue-36976",
+      "message": "index out of bounds: the len is 42 but the index is 42",
+      "source_file": "sw-composite-0.7.16/src/lib.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace",
+        "rust_begin_unwind"
+      ],
+      "issue": "https://github.com/servo/servo/issues/36976"
+    },
+    {
+      "id": "issue-36971",
+      "message": "not yet implemented",
+      "source_file": "components/script/xpath/eval.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace",
+        "rust_begin_unwind"
+      ],
+      "issue": "https://github.com/servo/servo/issues/36971"
+    },
+    {
+      "id": "issue-36968",
+      "message": "called `Result::unwrap()` on an `Err` value: Os { code: 24, kind: Uncategorized, message: \"Too many open files\" }",
+      "source_file": "components/script/script_thread.rs",
+      "stack_frames": [
+        "<unknown>",
+        "<unknown>"
+      ],
+      "issue": "https://github.com/servo/servo/issues/36968"
+    },
+    {
+      "id": "issue-36948",
+      "message": "right: 1",
+      "source_file": "grid-0.15.0/src/lib.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace",
+        "rust_begin_unwind"
+      ],
+      "issue": "https://github.com/servo/servo/issues/36948"
+    },
+    {
+      "id": "issue-36927",
+      "message": "assertion failed: !GetCurrentRealmOrNull(*cx).is_null()",
+      "source_file": "components/script_bindings/realms.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace",
+        "rust_begin_unwind"
+      ],
+      "issue": "https://github.com/servo/servo/issues/36927"
+    },
+    {
+      "id": "issue-36872",
+      "message": "Attr shouldn't appear here",
+      "source_file": "components/script/dom/servoparser/html.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace",
+        "rust_begin_unwind"
+      ],
+      "issue": "https://github.com/servo/servo/issues/36872"
+    },
+    {
+      "id": "issue-36870",
+      "message": "called `Option::unwrap()` on a `None` value",
+      "source_file": "euclid-0.22.11/src/point.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace",
+        "rust_begin_unwind"
+      ],
+      "issue": "https://github.com/servo/servo/issues/36870"
+    },
+    {
+      "id": "issue-36856",
+      "message": "called `Result::unwrap()` on an `Err` value: RecvError",
+      "source_file": "home/runner/.cargo/git/checkouts/media-9074def3f0bdf023/eb96030/audio/context.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace",
+        "rust_begin_unwind"
+      ],
+      "issue": "https://github.com/servo/servo/issues/36856"
+    },
+    {
+      "id": "issue-36852",
+      "message": "Get parameter string 0x1F03 failed. Maybe your GL context version is too outdated.",
+      "source_file": "glow-0.16.0/src/native.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace",
+        "rust_begin_unwind"
+      ],
+      "issue": "https://github.com/servo/servo/issues/36852"
+    },
+    {
+      "id": "issue-36850",
+      "message": "Cache should have been filled from traversal",
+      "source_file": "home/runner/.cargo/git/checkouts/media-9074def3f0bdf023/eb96030/audio/graph.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace",
+        "rust_begin_unwind"
+      ],
+      "issue": "https://github.com/servo/servo/issues/36850"
+    },
+    {
+      "id": "issue-36849",
+      "message": "failed to send message to system font service: Io(Os { code: 32, kind: BrokenPipe, message: \"Broken pipe\" })",
+      "source_file": "components/fonts/system_font_service.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace",
+        "rust_begin_unwind"
+      ],
+      "issue": "https://github.com/servo/servo/issues/36849"
+    },
+    {
+      "id": "issue-36846",
+      "message": "called `Option::unwrap()` on a `None` value",
+      "source_file": "components/script/canvas_context.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace",
+        "rust_begin_unwind"
+      ],
+      "issue": "https://github.com/servo/servo/issues/36846"
+    },
+    {
+      "id": "issue-36845",
+      "message": "called `Result::unwrap()` on an `Err` value: Disconnected",
+      "source_file": "components/script/canvas_state.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace",
+        "rust_begin_unwind"
+      ],
+      "issue": "https://github.com/servo/servo/issues/36845"
+    },
+    {
+      "id": "issue-36844",
+      "message": "called `Result::unwrap()` on an `Err` value: \"element linking failed: BoolError { message: \\\"Failed to link elements 'queue2' and 'capsfilter2'\\\", filename: \\\"/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/gstreamer-0.23.5/src/element.rs\\\", function: \\\"gstreamer::element::<impl gstreamer::auto::element::Element>::link_many\\\", line: 27 }\"",
+      "source_file": "home/runner/.cargo/git/checkouts/media-9074def3f0bdf023/eb96030/backends/gstreamer/lib.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace",
+        "rust_begin_unwind"
+      ],
+      "issue": "https://github.com/servo/servo/issues/36844"
+    },
+    {
+      "id": "issue-36843",
+      "message": "This blob doesn't have a parent.",
+      "source_file": "components/script/dom/globalscope.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace",
+        "rust_begin_unwind"
+      ],
+      "issue": "https://github.com/servo/servo/issues/36843"
+    },
+    {
+      "id": "issue-36842",
+      "message": "already mutably borrowed: BorrowError",
+      "source_file": "components/script/dom/path2d.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace",
+        "rust_begin_unwind"
+      ],
+      "issue": "https://github.com/servo/servo/issues/36842"
+    },
+    {
+      "id": "issue-36841",
+      "message": "Attempting to create a 0x35000 window/document",
+      "source_file": "home/runner/.cargo/git/checkouts/webrender-a8b399ecb6c2da85/ae2477d/webrender/src/render_api.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace",
+        "rust_begin_unwind"
+      ],
+      "issue": "https://github.com/servo/servo/issues/36841"
+    },
+    {
+      "id": "issue-36840",
+      "message": "called `Result::unwrap()` on an `Err` value: Parameter(ParameterError { kind: DimensionMismatch, underlying: None })",
+      "source_file": "components/script/dom/htmlcanvaselement.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace",
+        "rust_begin_unwind"
+      ],
+      "issue": "https://github.com/servo/servo/issues/36840"
+    },
+    {
+      "id": "issue-36810",
+      "message": "out of bounds. Row must be less than 1, but is 1",
+      "source_file": "grid-0.15.0/src/lib.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace",
+        "rust_begin_unwind"
+      ],
+      "issue": "https://github.com/servo/servo/issues/36810"
+    },
+    {
+      "id": "issue-36764",
+      "message": "called `Option::unwrap()` on a `None` value",
+      "source_file": "components/script/dom/nodelist.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace",
+        "rust_begin_unwind"
+      ],
+      "issue": "https://github.com/servo/servo/issues/36764"
+    },
+    {
+      "id": "issue-36763",
+      "message": "called `Option::unwrap()` on a `None` value",
+      "source_file": "euclid-0.22.11/src/size.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace",
+        "rust_begin_unwind"
+      ],
+      "issue": "https://github.com/servo/servo/issues/36763"
+    },
+    {
+      "id": "issue-36761",
+      "message": "slice index starts at 1 but ends at 0",
+      "source_file": "taffy-0.7.7/src/compute/grid/types/grid_item.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace",
+        "rust_begin_unwind"
+      ],
+      "issue": "https://github.com/servo/servo/issues/36761"
+    },
+    {
+      "id": "issue-36757",
+      "message": "Couldn't find common ancestor",
+      "source_file": "components/script/dom/document.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace",
+        "rust_begin_unwind"
+      ],
+      "issue": "https://github.com/servo/servo/issues/36757"
+    },
+    {
+      "id": "issue-36747",
+      "message": "Failed to get browsing context info from constellation.: Disconnected",
+      "source_file": "components/script/script_thread.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace",
+        "rust_begin_unwind"
+      ],
+      "issue": "https://github.com/servo/servo/issues/36747"
+    },
+    {
+      "id": "issue-36729",
+      "message": "right: 0",
+      "source_file": "components/script/dom/document.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace",
+        "rust_begin_unwind"
+      ],
+      "issue": "https://github.com/servo/servo/issues/36729"
+    },
+    {
+      "id": "issue-36728",
+      "message": "no entry found for key",
+      "source_file": "home/runner/.cargo/git/checkouts/webrender-a8b399ecb6c2da85/8846253/webrender/src/hit_test.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace",
+        "rust_begin_unwind"
+      ],
+      "issue": "https://github.com/servo/servo/issues/36728"
+    },
+    {
+      "id": "issue-36724",
+      "message": "already borrowed: BorrowMutError",
+      "source_file": "components/script/dom/htmlformelement.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace",
+        "rust_begin_unwind"
+      ],
+      "issue": "https://github.com/servo/servo/issues/36724"
+    },
+    {
+      "id": "issue-36722",
+      "message": "Trying to get host from a detached shadow root",
+      "source_file": "components/script/dom/shadowroot.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace",
+        "rust_begin_unwind"
+      ],
+      "issue": "https://github.com/servo/servo/issues/36722"
+    },
+    {
+      "id": "issue-36719",
+      "message": "byte index 1 is not a char boundary; it is inside '\\u{c4e35}' (bytes 0..4) of `󄸵`",
+      "source_file": "components/script/textinput.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace",
+        "rust_begin_unwind"
+      ],
+      "issue": "https://github.com/servo/servo/issues/36719"
+    },
+    {
+      "id": "issue-36717",
+      "message": "error receiving hit test result: Disconnected",
+      "source_file": "components/shared/compositing/lib.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace",
+        "rust_begin_unwind"
+      ],
+      "issue": "https://github.com/servo/servo/issues/36717"
+    },
+    {
+      "id": "issue-36702",
+      "message": "right: 180000",
+      "source_file": "components/script/dom/htmlcanvaselement.rs",
+      "stack_frames": [
+        "components/script/dom/htmlcanvaselement.rs"
+      ],
+      "issue": "https://github.com/servo/servo/issues/36702"
+    },
+    {
+      "id": "issue-36701",
+      "message": "called `Option::unwrap()` on a `None` value",
+      "source_file": "euclid-0.22.11/src/size.rs",
+      "stack_frames": [
+        "euclid-0.22.11/src/size.rs"
+      ],
+      "issue": "https://github.com/servo/servo/issues/36701"
+    },
+    {
+      "id": "issue-36699",
+      "message": "index out of bounds: the len is 0 but the index is 0",
+      "source_file": "components/layout/table/construct.rs",
+      "stack_frames": [
+        "components/layout/table/construct.rs"
+      ],
+      "issue": "https://github.com/servo/servo/issues/36699"
+    }
+  ]
 }
-
