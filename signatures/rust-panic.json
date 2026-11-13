@@ -36,6 +36,91 @@
         "tiny_skia_path"
       ],
       "issue": "https://github.com/servo/servo/issues/46338"
+    },
+    {
+      "id": "stacking-context-hoisted-box-missing",
+      "message": "internal error: entered unreachable code: Found hoisted box with missing or non-BoxFragment.",
+      "source_file": "components/layout/display_list/stacking_context.rs",
+      "stack_frames": [
+        "<layout::fragment_tree::fragment::Fragment>::build_stacking_context_tree",
+        "<layout::fragment_tree::fragment::Fragment>::build_stacking_context_tree",
+        "<layout::fragment_tree::box_fragment::BoxFragmentWithStyle>::build_stacking_context_tree_for_children"
+      ],
+      "issue": "https://github.com/servo/servo/issues/TODO"
+    },
+    {
+      "id": "webrender-render-task-bad-readback",
+      "message": "Bad Readback render task size: 1024x0",
+      "source_file": "webrender-0.70.1/src/render_task.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace::<std::panicking::panic_handler::{closure#0}, !>",
+        "<webrender::render_task::RenderTask>::new_dynamic"
+      ],
+      "issue": "https://github.com/servo/servo/issues/TODO"
+    },
+    {
+      "id": "graph-cache-should-have",
+      "message": "Cache should have been filled from traversal",
+      "source_file": "components/media/audio/graph.rs",
+      "stack_frames": [
+        "<servo_media_audio::render_thread::AudioRenderThread>::event_loop",
+        "std::sys::backtrace::__rust_begin_short_backtrace::<<servo_media_audio::context::AudioContext>::new<servo_media_gstreamer::GStreamerBackend>::{closure#0},",
+        "<std::thread::lifecycle::spawn_unchecked<<servo_media_audio::context::AudioContext>::new<servo_media_gstreamer::GStreamerBackend>::{closure#0},"
+      ],
+      "issue": "https://github.com/servo/servo/issues/TODO"
+    },
+    {
+      "id": "storage-refcell-already-mutably",
+      "message": "RefCell already mutably borrowed",
+      "source_file": "components/script/dom/element/attributes/storage.rs",
+      "stack_frames": [
+        "<script::dom::element::attributes::storage::AttributeStorage as mozjs_sys::trace::Traceable>::trace",
+        "<script::dom::html::htmlelement::HTMLElement as mozjs_sys::trace::Traceable>::trace",
+        "script_bindings::codegen::GenericBindings::HTMLBodyElementBinding::HTMLBodyElement_Binding::_trace::<script::dom::bindings::codegen::DomTypeHolder::DomTypeHolder>"
+      ],
+      "issue": "https://github.com/servo/servo/issues/TODO"
+    },
+    {
+      "id": "euclid-point-unwrap-none",
+      "message": "called `Option::unwrap()` on a `None` value",
+      "source_file": "euclid-0.22.14/src/point.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace::<std::panicking::panic_handler::{closure#0}, !>",
+        "core::option::unwrap_failed"
+      ],
+      "issue": "https://github.com/servo/servo/issues/TODO"
+    },
+    {
+      "id": "tiny-skia-mod-range-start-index",
+      "message": "range start index 2587205120000 out of range for slice of length 25000000",
+      "source_file": "tiny-skia-0.12.0/src/pipeline/mod.rs",
+      "stack_frames": [
+        "<rayon_core::job::HeapJob<rayon_core::spawn::spawn_job<<servo_base::threadpool::ThreadPool>::spawn<<net::image_cache::ImageCacheImpl as net_traits::image_cache::ImageCache>::rasterize_vector_image::{closure#0}>::{closure#0}>::{closure#0}> as rayon_core::job::Job>::execute",
+        "std::sys::backtrace::__rust_begin_short_backtrace::<style::global_style_data::thread_spawn::{closure#0},"
+      ],
+      "issue": "https://github.com/servo/servo/issues/TODO"
+    },
+    {
+      "id": "audioparam-unwrap-err",
+      "message": "called `Result::unwrap()` on an `Err` value: RecvError",
+      "source_file": "components/script/dom/audio/audioparam.rs",
+      "stack_frames": [
+        "script_bindings::codegen::GenericBindings::AudioParamBinding::AudioParam_Binding::get_value::<script::dom::bindings::codegen::DomTypeHolder::DomTypeHolder>::{closure#0}",
+        "script_bindings::codegen::GenericBindings::AudioParamBinding::AudioParam_Binding::get_value::<script::dom::bindings::codegen::DomTypeHolder::DomTypeHolder>",
+        "script_bindings::utils::generic_call::<script::dom::bindings::codegen::DomTypeHolder::DomTypeHolder, false>"
+      ],
+      "issue": "https://github.com/servo/servo/issues/TODO"
+    },
+    {
+      "id": "tiny-skia-alpha-runs-unwrap-none",
+      "message": "called `Option::unwrap()` on a `None` value",
+      "source_file": "tiny-skia-0.12.0/src/alpha_runs.rs",
+      "stack_frames": [
+        "<rayon_core::job::HeapJob<rayon_core::spawn::spawn_job<<servo_base::threadpool::ThreadPool>::spawn<<net::image_cache::ImageCacheImpl as net_traits::image_cache::ImageCache>::rasterize_vector_image::{closure#0}>::{closure#0}>::{closure#0}> as rayon_core::job::Job>::execute",
+        "std::sys::backtrace::__rust_begin_short_backtrace::<style::global_style_data::thread_spawn::{closure#0},",
+        "<rayon_core::job::HeapJob<rayon_core::spawn::spawn_job<<servo_base::threadpool::ThreadPool>::spawn<<net::image_cache::ImageCacheImpl as net_traits::image_cache::ImageCache>::rasterize_vector_image::{closure#0}>::{closure#0}>::{closure#0}> as rayon_core::job::Job>::execute"
+      ],
+      "issue": "https://github.com/servo/servo/issues/TODO"
     }
   ]
 }
