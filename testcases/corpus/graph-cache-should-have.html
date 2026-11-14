@@ -1,0 +1,15 @@
+<script>
+function freememory() {
+}
+function jsfuzzer() {
+try { /* newvar{var00017:AudioContext} */ var var00017 = new AudioContext(); } catch(e) { }
+try { /* newvar{var00016:MediaStreamAudioDestinationNode} */ var var00016 = var00017.createMediaStreamDestination(); } catch(e) { }
+try { /* newvar{var00015:AudioNode} */ var var00015 = var00016; } catch(e) { }
+try { /* newvar{var00014:BaseAudioContext} */ var var00014 = var00015.context; } catch(e) { }
+try { /* newvar{var00013:AudioDestinationNode} */ var var00013 = var00014.destination; } catch(e) { }
+try { /* newvar{var00012:AudioNode} */ var var00012 = var00013; } catch(e) { }
+try { /* newvar{var00018:unsigned} */ var var00018 = var00019.DOCUMENT_POSITION_DISCONNECTED; } catch(e) { }
+try { /* newvar{var00011:AudioNode} */ var var00011 = var00012.connect(var00015,var00018); } catch(e) { }
+}
+</script>
+<body onload=jsfuzzer()>

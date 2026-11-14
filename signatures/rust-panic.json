@@ -36,6 +36,39 @@
         "tiny_skia_path"
       ],
       "issue": "https://github.com/servo/servo/issues/46338"
+    },
+    {
+      "id": "stacking-context-hoisted-box-missing",
+      "message": "internal error: entered unreachable code: Found hoisted box with missing or non-BoxFragment.",
+      "source_file": "components/layout/display_list/stacking_context.rs",
+      "stack_frames": [
+        "<layout::fragment_tree::fragment::Fragment>::build_stacking_context_tree",
+        "<layout::fragment_tree::fragment::Fragment>::build_stacking_context_tree",
+        "<layout::fragment_tree::box_fragment::BoxFragmentWithStyle>::build_stacking_context_tree_for_children"
+      ],
+      "issue": "https://github.com/servo/servo/issues/TODO"
+    },
+    {
+      "id": "audioparam-unwrap-err",
+      "message": "called `Result::unwrap()` on an `Err` value: RecvError",
+      "source_file": "components/script/dom/audio/audioparam.rs",
+      "stack_frames": [
+        "script_bindings::codegen::GenericBindings::AudioParamBinding::AudioParam_Binding::get_value::<script::dom::bindings::codegen::DomTypeHolder::DomTypeHolder>::{closure#0}",
+        "script_bindings::codegen::GenericBindings::AudioParamBinding::AudioParam_Binding::get_value::<script::dom::bindings::codegen::DomTypeHolder::DomTypeHolder>",
+        "script_bindings::utils::generic_call::<script::dom::bindings::codegen::DomTypeHolder::DomTypeHolder, false>"
+      ],
+      "issue": "https://github.com/servo/servo/issues/TODO"
+    },
+    {
+      "id": "tiny-skia-alpha-runs-unwrap-none",
+      "message": "called `Option::unwrap()` on a `None` value",
+      "source_file": "tiny-skia-0.12.0/src/alpha_runs.rs",
+      "stack_frames": [
+        "<rayon_core::job::HeapJob<rayon_core::spawn::spawn_job<<servo_base::threadpool::ThreadPool>::spawn<<net::image_cache::ImageCacheImpl as net_traits::image_cache::ImageCache>::rasterize_vector_image::{closure#0}>::{closure#0}>::{closure#0}> as rayon_core::job::Job>::execute",
+        "std::sys::backtrace::__rust_begin_short_backtrace::<style::global_style_data::thread_spawn::{closure#0},",
+        "<rayon_core::job::HeapJob<rayon_core::spawn::spawn_job<<servo_base::threadpool::ThreadPool>::spawn<<net::image_cache::ImageCacheImpl as net_traits::image_cache::ImageCache>::rasterize_vector_image::{closure#0}>::{closure#0}>::{closure#0}> as rayon_core::job::Job>::execute"
+      ],
+      "issue": "https://github.com/servo/servo/issues/47335"
     }
   ]
 }
