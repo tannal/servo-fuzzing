@@ -16,6 +16,7 @@ from .signatures import (
     CrashSignature,
     default_drafts_path,
     default_fixed_history_path,
+    load_known_signatures,
     load_signatures,
     sync_draft_signatures,
 )
@@ -189,7 +190,7 @@ def import_crashes(
     servo_version = get_servo_version(binary_path)
     sig_path = Path(signatures_path).resolve()
     history_path = (Path(fixed_history_path) if fixed_history_path else default_fixed_history_path(sig_path)).resolve()
-    signatures = load_signatures(sig_path) if sig_path.exists() else []
+    signatures = load_known_signatures(sig_path)
     fixed_signatures = load_signatures(history_path) if history_path.exists() else []
     print(f"Loaded {len(signatures)} known crash signatures and {len(fixed_signatures)} historical fixed signatures.")
     print(f"Triaging {len(testcases)} tests with {concurrency} workers (timeout={timeout}s)...\n")

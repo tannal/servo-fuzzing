@@ -12,8 +12,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Optional
 
-from .bisect import UPSTREAM_REPO, BisectResult, _get_json
-from .executor import TestResult
+from .bisect import UPSTREAM_REPO, BisectResult, _get_json, run_bisect
+from .executor import TestResult, TestStatus, run_single_test
 from .parser import CrashInfo
 from .reporter import make_signature_draft
 
@@ -313,6 +313,74 @@ def build_context(evidence: Evidence, files: dict[str, Optional[str]]) -> dict[s
         },
         "files": files,
     }
+
+
+def gather_evidence(
+    binary: Path,
+    testcase: Path,
+    servo_args: list[str],
+    attempts: int = 3,
+    timeout: float = 5.0,
+    original: Optional[Path] = None,
+    bisect: bool = False,
+    good: Optional[str] = None,
+    bad: Optional[str] = None,
+    cache_dir: Path = Path("target/bisect"),
+    token: Optional[str] = None,
+) -> Optional[Evidence]:
+    """Run `testcase` and collect what a report needs; None when it never crashes."""
+    from .runner import get_servo_version
+
+    def crash_site(result: TestResult) -> Optional[tuple]:
+        info = result.crash_info
+        return (info.message, info.source_file, info.line) if info else None
+
+    crashing: list[TestResult] = []
+    for attempt in range(1, attempts + 1):
+        print(f"[{attempt}/{attempts}] Running {testcase} on {binary}...")
+        res = run_single_test(binary=binary, testcase=testcase, servo_args=servo_args, timeout=timeout)
+        crashed = res.crash_info is not None or res.status == TestStatus.NEW_CRASH
+        if crashed and (not crashing or crash_site(res) == crash_site(crashing[0])):
+            crashing.append(res)
+    if not crashing:
+        return None
+
+    evidence = Evidence(
+        testcase=testcase,
+        result=crashing[0],
+        servo_version=get_servo_version(binary),
+        servo_args=servo_args,
+        attempts=attempts,
+        crashes=len(crashing),
+        original=original,
+    )
+    crash = evidence.crash
+    fetch_json, fetch_text = github_fetchers(token)
+
+    if bisect:
+        try:
+            evidence.bisect, _ = run_bisect(
+                testcase=testcase,
+                pattern=re.escape(crash.message) if crash else None,
+                good=good,
+                bad=bad,
+                attempts=attempts,
+                timeout=timeout,
+                servo_args=servo_args,
+                cache_dir=Path(cache_dir),
+                token=token,
+            )
+            evidence.commits = fetch_range_commits(evidence.bisect, crash, fetch_json)
+        except Exception as exc:
+            print(f"Warning: bisect failed, report has no regression range: {exc}")
+
+    source_ref = version_sha(evidence.servo_version)
+    if crash and source_ref:
+        try:
+            evidence.snippet = fetch_source_snippet(crash, source_ref, fetch_text)
+        except Exception as exc:
+            print(f"Warning: could not fetch {crash.source_file}@{source_ref}: {exc}")
+    return evidence
 
 
 AGENT_BRIEF = """# Root cause analysis brief

@@ -1,0 +1,84 @@
+name: Open New Panic Pull Requests
+
+# Called by the fuzzing workflows after `servo-fuzzing propose`. It never runs
+# servoshell, so the testcases are only handled as files by the job that can push.
+on:
+  workflow_call:
+    inputs:
+      artifact:
+        description: 'Artifact holding signatures/pending/<id>.json and reports/<id>/'
+        type: string
+        default: panic-proposals
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  open:
+    name: One Pull Request per New Panic
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          ref: main
+
+      - name: Download Proposals
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ inputs.artifact }}
+          path: ${{ runner.temp }}/proposals
+
+      - name: Open Pull Requests
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PROPOSALS: ${{ runner.temp }}/proposals
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          for signature in "$PROPOSALS"/signatures/pending/*.json; do
+            id="$(basename "$signature" .json)"
+            branch="new-panic/$id"
+            report="$PROPOSALS/reports/$id"
+            if ! [[ "$id" =~ ^[a-z0-9][a-z0-9._-]*$ ]] || [ ! -f "$report/issue.md" ]; then
+              echo "::warning::Skipping $id: unusable id or no report"
+              continue
+            fi
+            existing="$(gh pr list --head "$branch" --state all --json url --jq '.[0].url // empty')"
+            if [ -n "$existing" ]; then
+              echo "$id is already proposed in $existing"
+              continue
+            fi
+
+            git checkout -q -B "$branch" origin/main
+            mkdir -p signatures/pending reports
+            cp "$signature" "signatures/pending/$id.json"
+            rm -rf "reports/$id"
+            cp -r "$report" "reports/$id"
+            git add "signatures/pending/$id.json" "reports/$id"
+            message="$(jq -r .message "$signature")"
+            source_file="$(jq -r .source_file "$signature")"
+            git commit -q -m "new panic: $id" -m "$message ($source_file)"
+            git push -q --force origin "$branch"
+
+            body="$RUNNER_TEMP/body.md"
+            {
+              echo "New panic without an upstream issue, found by $RUN_URL."
+              echo
+              echo "- \`signatures/pending/$id.json\`: once merged, this panic is known and no longer reported as new."
+              echo "- \`reports/$id/\`: evidence pack. \`issue.md\` is the draft below, \`context.json\` and \`AGENT.md\` are for agents, root cause notes go in \`analysis.md\` on this branch."
+              echo "- After the issue is filed in servo/servo with the \`B-fuzzing\` label, the signature sync removes both."
+              echo
+              echo "---"
+              echo
+              head -c 55000 "$report/issue.md"
+            } > "$body"
+            title="new panic: $message ($source_file)"
+            url="$(gh pr create --base main --head "$branch" --title "${title:0:200}" --body-file "$body")"
+            echo "- [$id]($url)" >> "$GITHUB_STEP_SUMMARY"
+          done

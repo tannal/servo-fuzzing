@@ -21,6 +21,8 @@ jobs:
   campaign:
     name: Generate, Triage & Publish Bundle
     runs-on: ubuntu-latest
+    outputs:
+      proposals: ${{ steps.propose.outputs.found }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -88,6 +90,30 @@ jobs:
               --reduce-timeout 2.0
           fi
 
+      - name: Draft Pending Signatures & Reports for New Panics
+        id: propose
+        if: hashFiles('target/triage/draft-signatures.json') != ''
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          servo-fuzzing propose \
+            --drafts target/triage/draft-signatures.json \
+            --corpus target/panic-corpus \
+            --binary ./servo/servoshell \
+            --output target/proposals \
+            --skip-proposed \
+            --bisect
+          if [ -d target/proposals/signatures/pending ]; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload Panic Proposals
+        if: steps.propose.outputs.found == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: panic-proposals
+          path: target/proposals
+
       - name: Package New Panic Corpus
         if: always()
         run: |
@@ -150,3 +176,13 @@ jobs:
         with:
           name: triage-reports
           path: target/triage
+
+  # One pull request per new panic: pending signature plus evidence pack.
+  open-panic-prs:
+    name: Propose New Panics
+    needs: campaign
+    if: ${{ !cancelled() && needs.campaign.outputs.proposals == 'true' }}
+    permissions:
+      contents: write
+      pull-requests: write
+    uses: ./.github/workflows/open-panic-prs.yml

@@ -14,7 +14,7 @@ from .executor import TestStatus, run_single_test, run_suite
 from .generators import GeneratorManager
 from .reporter import print_cli_summary, write_artifacts
 from .runner import get_servo_version
-from .signatures import default_fixed_history_path, load_signatures
+from .signatures import default_fixed_history_path, load_known_signatures, load_signatures
 
 
 def run_campaign(args: argparse.Namespace, stop: threading.Event) -> int:
@@ -27,7 +27,7 @@ def run_campaign(args: argparse.Namespace, stop: threading.Event) -> int:
         raise ValueError("timeout must be positive and pause nonnegative, both finite")
 
     sig_path = Path(args.signatures)
-    signatures = load_signatures(sig_path)
+    signatures = load_known_signatures(sig_path)
     history_path = default_fixed_history_path(sig_path)
     fixed_signatures = load_signatures(history_path) if history_path.exists() else []
     servo_args = args.servo_arg or ["-xfz", "--enable-experimental-web-platform-features"]

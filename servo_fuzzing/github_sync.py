@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -14,7 +15,12 @@ from .parser import (
     normalize_source_path,
     parse_crash,
 )
-from .signatures import CrashSignature, save_signatures
+from .signatures import (
+    CrashSignature,
+    find_matching_signature_entry,
+    load_pending_signatures,
+    save_signatures,
+)
 
 
 def _github_headers(token: Optional[str] = None, user_agent: str = "servo-fuzzing-sync") -> dict[str, str]:
@@ -163,6 +169,7 @@ class SyncResult:
     open_signatures: list[CrashSignature] = field(default_factory=list)
     closed_signatures: list[CrashSignature] = field(default_factory=list)
     skipped: list[dict[str, Any]] = field(default_factory=list)
+    resolved: list[tuple[CrashSignature, CrashSignature]] = field(default_factory=list)
 
     def to_markdown(self, repo: str) -> str:
         lines = [
@@ -174,6 +181,9 @@ class SyncResult:
             f"| Closed issues -> `fixed-history.json` | {len(self.closed_signatures)} |",
             f"| Issues without a parseable panic location | {len(self.skipped)} |",
         ]
+        if self.resolved:
+            lines += ["", "Pending panics that now have an upstream issue (pending signature and report removed):", ""]
+            lines += [f"- `{pending['id']}` -> {upstream['issue']}" for pending, upstream in self.resolved]
         if self.skipped:
             lines += ["", "Skipped issues (ASAN reports, signals, debugger backtraces, tracking issues):", ""]
             lines += [
@@ -205,12 +215,17 @@ def sync_signatures_from_github(
     repo: str = "servo/servo",
     token: Optional[str] = None,
     dry_run: bool = False,
+    pending_dir: Optional[Path] = None,
+    reports_dir: Optional[Path] = None,
 ) -> SyncResult:
     """Regenerate both signature files from the B-fuzzing issues of `repo`.
 
     Open issues become `signatures_path`, closed ones `history_path`. Nothing from the
     previous files is kept, so a signature follows its issue when it is edited, closed
     or reopened. Both files are written only after every request succeeded.
+
+    A signature in `pending_dir` whose panic now has an upstream issue is removed
+    together with its report in `reports_dir`.
     """
     print(f"Fetching B-fuzzing issues from {repo}...")
     open_issues = fetch_fuzzing_issues(repo=repo, state="open", token=token)
@@ -223,6 +238,12 @@ def sync_signatures_from_github(
     result.open_signatures = _signatures_from_issues(open_issues, result)
     result.closed_signatures = _signatures_from_issues(closed_issues, result)
 
+    upstream = result.open_signatures + result.closed_signatures
+    for pending in load_pending_signatures(pending_dir) if pending_dir else []:
+        filed = find_matching_signature_entry(pending["message"], pending["source_file"], upstream)
+        if filed:
+            result.resolved.append((pending, filed))
+
     if dry_run:
         print("[Dry Run] Signature files left unchanged.")
     else:
@@ -230,6 +251,12 @@ def sync_signatures_from_github(
         save_signatures(Path(history_path), result.closed_signatures)
         print(f"Wrote {len(result.open_signatures)} signatures to {signatures_path}.")
         print(f"Wrote {len(result.closed_signatures)} signatures to {history_path}.")
+        for pending, _ in result.resolved:
+            (Path(pending_dir) / f"{pending['id']}.json").unlink(missing_ok=True)
+            if reports_dir:
+                shutil.rmtree(Path(reports_dir) / pending["id"], ignore_errors=True)
+    for pending, filed in result.resolved:
+        print(f"  pending {pending['id']} is now tracked by {filed['issue']}")
     for issue in result.skipped:
         print(f"  skipped #{issue['number']} ({issue['state']}): {issue['title']}")
     return result
