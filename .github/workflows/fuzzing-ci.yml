@@ -76,7 +76,7 @@ jobs:
 
       - name: Install servo-fuzzing
         run: |
-          pip install -e .
+          pip install -e .[generators]
 
       - name: Cache DOM Generators
         uses: actions/cache@v6

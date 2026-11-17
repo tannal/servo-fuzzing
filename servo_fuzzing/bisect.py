@@ -5,6 +5,7 @@ import json
 import re
 import shutil
 import tarfile
+import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
@@ -71,7 +72,14 @@ def fetch_nightlies(
     """Return nightlies that ship `asset_name`, oldest first, stopping once older than `oldest`."""
     nightlies: list[Nightly] = []
     for page in range(1, max_pages + 1):
-        releases = _get_json(f"https://api.github.com/repos/{repo}/releases?per_page=100&page={page}", token)
+        try:
+            releases = _get_json(f"https://api.github.com/repos/{repo}/releases?per_page=100&page={page}", token)
+        except urllib.error.HTTPError as error:
+            # Without a token GitHub lists only the newest 1000 releases and answers 422 beyond them.
+            if error.code != 422 or page == 1:
+                raise
+            print("GitHub lists only the newest 1000 releases without a token; older nightlies are skipped.")
+            break
         if not releases:
             break
         for release in releases:

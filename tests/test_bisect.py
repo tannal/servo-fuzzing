@@ -1,5 +1,6 @@
 """Tests for nightly bisection."""
 import unittest
+import urllib.error
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -10,6 +11,7 @@ from servo_fuzzing.bisect import (
     bisect_nightlies,
     build_dir_for,
     fetch_commit_range,
+    fetch_nightlies,
     format_bisect_report,
     parse_release,
     reproduces,
@@ -107,6 +109,28 @@ class TestBisect(unittest.TestCase):
         with patch("servo_fuzzing.bisect._get_json", side_effect=lambda url, _: page(int(url.rsplit("=", 1)[1]))):
             commits = fetch_commit_range(result)
         self.assertEqual(len(commits), 150)
+
+
+    def test_nightly_list_ends_where_github_stops_paginating(self):
+        def release(tag):
+            return {"tag_name": tag, "body": "", "assets": [{"name": "a.tar.gz", "browser_download_url": f"https://x/{tag}"}]}
+
+        def page(url, _token):
+            number = int(url.rsplit("=", 1)[1])
+            if number > 2:
+                raise urllib.error.HTTPError(url, 422, "Only the first 1000 results are available.", None, None)
+            return [release(f"2026-0{number}-{day:02d}") for day in range(1, 4)]
+
+        with patch("servo_fuzzing.bisect._get_json", side_effect=page):
+            nightlies = fetch_nightlies(asset_name="a.tar.gz")
+        self.assertEqual([n.tag for n in nightlies][::5], ["2026-01-01", "2026-02-03"])
+        self.assertEqual(len(nightlies), 6)
+
+    def test_nightly_list_error_on_first_page_is_raised(self):
+        error = urllib.error.HTTPError("u", 422, "Validation Failed", None, None)
+        with patch("servo_fuzzing.bisect._get_json", side_effect=error):
+            with self.assertRaises(urllib.error.HTTPError):
+                fetch_nightlies(asset_name="a.tar.gz")
 
 
 if __name__ == "__main__":
