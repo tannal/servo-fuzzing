@@ -13,8 +13,58 @@ permissions:
   contents: read
 
 jobs:
+  checks:
+    name: Unit Tests & Validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout servo/fuzzing
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+
+      - name: Install servo-fuzzing
+        run: |
+          pip install -e . pytest
+
+      - name: Run unit tests
+        run: |
+          python -m pytest -q tests
+
+      - name: Lint workflows
+        run: |
+          bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.12/scripts/download-actionlint.bash) 1.7.12
+          ./actionlint -shellcheck=
+
+      - name: Validate JSON files
+        run: |
+          for f in configs/*.json signatures/*.json; do
+            python -m json.tool "$f" > /dev/null
+          done
+          servo-fuzzing validate-signatures --signatures signatures/rust-panic.json
+          servo-fuzzing validate-signatures --signatures signatures/fixed-history.json
+
+      - name: Sync B-fuzzing issues from servo/servo
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          servo-fuzzing sync-issues \
+            --signatures signatures/rust-panic.json \
+            --history signatures/fixed-history.json \
+            --include-closed \
+            --repo servo/servo
+
+      - name: Validate synchronized signatures
+        run: |
+          servo-fuzzing validate-signatures --signatures signatures/rust-panic.json
+          servo-fuzzing validate-signatures --signatures signatures/fixed-history.json
+
+  # Generated testcases are random, so new upstream panics would fail unrelated PRs.
   fuzzing:
     name: Headless DOM Fuzzing
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout servo/fuzzing
