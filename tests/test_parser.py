@@ -91,6 +91,49 @@ index out of bounds (thread Script#2, at <unknown>)
         )
         self.assertIsNone(parse_crash(sample_output))
 
+    def test_assert_eq_message_is_the_assertion_line(self):
+        output = (
+            "assertion `left == right` failed: Vector length 1 should be a multiple of cols = 0\n"
+            "  left: 0\n"
+            " right: 1 (thread Script(1,1), at /home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/grid-0.15.0/src/lib.rs:481)\n"
+        )
+        crash = parse_crash(output)
+        self.assertEqual(
+            crash.message,
+            "assertion `left == right` failed: Vector length 1 should be a multiple of cols = 0",
+        )
+        self.assertEqual(crash.source_file, "grid-0.15.0/src/lib.rs")
+
+    def test_wrapped_assert_condition_is_joined(self):
+        output = (
+            "Panic hook called.\n"
+            "assertion failed: self.inclusive_ancestors(shadow_including).any(|ancestor|\n"
+            "        &*ancestor == common_ancestor) (thread Script#1, at components/script/dom/node/node.rs:3318)\n"
+        )
+        crash = parse_crash(output)
+        self.assertEqual(
+            crash.message,
+            "assertion failed: self.inclusive_ancestors(shadow_including).any(|ancestor| &*ancestor == common_ancestor)",
+        )
+
+    def test_normalize_git_and_toolchain_paths(self):
+        self.assertEqual(
+            normalize_source_path(
+                "/home/runner/.cargo/git/checkouts/webrender-a8b399ecb6c2da85/8846253/webrender/src/hit_test.rs:449"
+            ),
+            "webrender/src/hit_test.rs",
+        )
+        self.assertEqual(
+            normalize_source_path(
+                "/home/runner/.rustup/toolchains/1.89.0-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/num/f32.rs:1405"
+            ),
+            "library/core/src/num/f32.rs",
+        )
+        self.assertEqual(
+            normalize_source_path("/rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/alloc/src/boxed.rs:2254:9"),
+            "library/alloc/src/boxed.rs",
+        )
+
     def test_parse_condensed_backtrace(self):
         sample_condensed = (
             "assertion failed: parent_proxy.currently_active().is_some() (thread Script#4, at components/script/dom/window/windowproxy.rs:950) "

@@ -29,13 +29,17 @@ class TestCLI(unittest.TestCase):
             fake_bin = Path(f.name)
             fake_bin.chmod(0o755)
 
-        code = cli_main([
-            "run",
-            "--binary", str(fake_bin),
-            "--config", "configs/default.json",
-            "--signatures", "signatures/rust-panic.json",
-            "--dry-run",
-        ])
+        with tempfile.TemporaryDirectory() as tmpdir:
+            (Path(tmpdir) / "case.html").write_text("<p>")
+            code = cli_main([
+                "run",
+                "--binary", str(fake_bin),
+                "--config", "configs/default.json",
+                "--signatures", "signatures/rust-panic.json",
+                "--testcases", tmpdir,
+                "--output", str(Path(tmpdir) / "out"),
+                "--dry-run",
+            ])
         self.assertEqual(code, 0)
         fake_bin.unlink()
 
@@ -137,9 +141,9 @@ class TestCLI(unittest.TestCase):
                 "--signatures", str(sig_file),
             ])
             self.assertEqual(code, 0)
-            data = json.loads(sig_file.read_text(encoding="utf-8"))
-            self.assertEqual(len(data["signatures"]), 1)
-            self.assertEqual(data["signatures"][0]["id"], "foo-sig")
+            self.assertEqual(json.loads(sig_file.read_text(encoding="utf-8"))["signatures"], [])
+            drafts = json.loads((triage / "draft-signatures.json").read_text(encoding="utf-8"))
+            self.assertEqual([d["id"] for d in drafts["signatures"]], ["foo-sig"])
 
 
 if __name__ == "__main__":

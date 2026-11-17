@@ -152,11 +152,11 @@ class TestSignatures(unittest.TestCase):
 
             corpus_dir = tmp / "corpus"
             added = sync_draft_signatures(triage_dir, sigs_file, corpus_out_dir=corpus_dir)
-            # Only ONE signature should be added despite 3 crash dirs!
+            # Only ONE draft despite 3 crash dirs, and the known signatures are untouched
             self.assertEqual(len(added), 1)
-            updated_sigs = load_signatures(sigs_file)
-            self.assertEqual(len(updated_sigs), len(self.signatures) + 1)
-            self.assertEqual(updated_sigs[-1]["message"], "Found hoisted box with missing BoxFragment")
+            self.assertEqual(load_signatures(sigs_file), self.signatures)
+            drafts = load_signatures(triage_dir / "draft-signatures.json")
+            self.assertEqual([d["message"] for d in drafts], ["Found hoisted box with missing BoxFragment"])
 
             # Only ONE reproducer html in corpus_dir
             repros = list(corpus_dir.glob("*.html"))
@@ -197,9 +197,10 @@ class TestSignatures(unittest.TestCase):
                 corpus_out_dir=corpus_dir,
                 fixed_history_path=history_file,
             )
-            # Should NOT add a duplicate TODO signature to active rust-panic.json
+            # A crash matching a closed issue is a regression, not a new draft
             self.assertEqual(len(added), 0)
             self.assertEqual(len(load_signatures(sigs_file)), len(self.signatures))
+            self.assertFalse((triage_dir / "draft-signatures.json").exists())
             # Reproducer is still saved under the historical signature ID
             self.assertTrue((corpus_dir / "stacking-context-hoisted-box-missing.html").exists())
 
@@ -231,17 +232,20 @@ class TestSignatures(unittest.TestCase):
                 "number": "46109",
                 "title": "Found hoisted box with missing or non-BoxFragment",
             }):
+                drafts_file = tmp / "drafts.json"
                 added = sync_draft_signatures(
                     triage_dir,
                     sigs_file,
+                    drafts_path=drafts_file,
                     fixed_history_path=history_file,
                     lookup_github=True,
                 )
 
-            self.assertEqual(len(added), 0)
-            archived = load_signatures(history_file)
-            self.assertEqual(len(archived), 1)
-            self.assertEqual(archived[0]["issue"], "https://github.com/servo/servo/issues/46109")
+            # The draft carries the upstream link; the synced files stay as they were
+            self.assertEqual([s["issue"] for s in added], ["https://github.com/servo/servo/issues/46109"])
+            self.assertEqual(load_signatures(drafts_file), added)
+            self.assertEqual(load_signatures(history_file), [])
+            self.assertEqual(load_signatures(sigs_file), self.signatures)
 
 
 if __name__ == "__main__":

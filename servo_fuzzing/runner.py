@@ -154,39 +154,31 @@ def main(argv: Optional[list[str]] = None) -> int:
     if args.testcases:
         test_dirs.extend(args.testcases)
 
-    from .bundle import obtain_bundle, unpack_bundle
+    gen_config = config.get("generators", {})
+    generate = bool(args.generate or gen_config.get("enabled", False))
 
-    if not test_dirs and args.bundle:
-        bundle_tar = obtain_bundle(bundle_spec=args.bundle, force_download=args.force_download)
-        if bundle_tar:
-            bundle_target = output_dir / "bundle"
-            unpack_bundle(bundle_tar=bundle_tar, target_dir=bundle_target, clean_target=True)
-            test_dirs.append(bundle_target)
-        else:
-            print("Warning: Could not obtain specified bundle. Falling back to default testcases.")
-            test_dirs.append("testcases")
-    elif not test_dirs and "test_dirs" in config:
-        test_dirs.extend(config["test_dirs"])
-    elif not test_dirs:
-        print("No testcases specified. Automatically resolving latest bundle from GitHub Releases...")
-        bundle_tar = obtain_bundle(bundle_spec="latest", force_download=args.force_download)
-        if bundle_tar:
-            bundle_target = output_dir / "bundle"
-            unpack_bundle(bundle_tar=bundle_tar, target_dir=bundle_target, clean_target=True)
-            test_dirs.append(bundle_target)
-        else:
-            repo_root = Path(__file__).resolve().parent.parent
-            local_corpus = repo_root / "testcases" / "corpus"
-            if local_corpus.exists():
-                print(f"Using local regression corpus: {local_corpus}")
-                test_dirs.append(local_corpus)
-            else:
-                test_dirs.append("testcases")
+    bundle_spec = args.bundle
+    if not test_dirs and not bundle_spec:
+        test_dirs.extend(config.get("test_dirs", []))
+
+    # Without explicit testcases, replay a bundle; a generating run only does so when asked.
+    if not test_dirs and not bundle_spec and not generate:
+        print("No testcases specified. Resolving the latest bundle from GitHub Releases...")
+        bundle_spec = "latest"
+    if not test_dirs and bundle_spec:
+        from .bundle import obtain_bundle, unpack_bundle
+
+        bundle_tar = obtain_bundle(bundle_spec=bundle_spec, force_download=args.force_download)
+        if not bundle_tar:
+            print(f"Error: could not obtain bundle '{bundle_spec}'. Pass --testcases or --bundle.")
+            return 2
+        bundle_target = output_dir / "bundle"
+        unpack_bundle(bundle_tar=bundle_tar, target_dir=bundle_target, clean_target=True)
+        test_dirs.append(bundle_target)
 
     extensions = config.get("test_extensions", [".html", ".htm"])
 
-    gen_config = config.get("generators", {})
-    if args.generate or gen_config.get("enabled", False):
+    if generate:
         from .generators import GeneratorManager
 
         count = args.generate_count or gen_config.get("count_per_generator", 100)

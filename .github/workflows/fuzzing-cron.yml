@@ -7,7 +7,6 @@ on:
 
 permissions:
   contents: write
-  pull-requests: write
 
 jobs:
   campaign:
@@ -43,13 +42,15 @@ jobs:
       - name: Download latest Servoshell
         run: ./download-latest-nightly.sh
 
-      - name: Prune Fixed/Closed Issues from Upstream
+      # Only for this run; the committed files are updated by sync-signatures.yml.
+      - name: Refresh Signatures from Upstream B-fuzzing Issues
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          servo-fuzzing prune-closed \
+          servo-fuzzing sync-issues \
             --signatures signatures/rust-panic.json \
-            --archive signatures/fixed-history.json
+            --history signatures/fixed-history.json \
+            || echo "::warning::Upstream sync failed; triaging against the committed signatures"
 
       - name: Setup DOM Generators
         run: servo-fuzzing setup-generators
@@ -66,13 +67,14 @@ jobs:
             --output target/triage \
             --timeout 2.0 || true
 
-      - name: Deduplicate, Minimize and Add New Panic Signatures
+      - name: Deduplicate and Minimize New Panics
         run: |
           if [ -d "target/triage/new_crashes" ]; then
             servo-fuzzing sync-drafts \
               --triage-dir target/triage \
               --signatures signatures/rust-panic.json \
-              --corpus testcases/corpus \
+              --drafts target/triage/draft-signatures.json \
+              --corpus target/panic-corpus \
               --reduce-binary ./servo/servoshell \
               --reduce-timeout 2.0
           fi
@@ -80,8 +82,8 @@ jobs:
       - name: Package New Panic Corpus
         if: always()
         run: |
-          if [ -d testcases/corpus ] && find testcases/corpus -name '*.html' -print -quit | grep -q .; then
-            tar -czf target/new-panic-corpus.tar.gz -C testcases/corpus .
+          if [ -d target/panic-corpus ] && find target/panic-corpus -name '*.html' -print -quit | grep -q .; then
+            tar -czf target/new-panic-corpus.tar.gz -C target/panic-corpus .
             echo "Packaged new panic corpus into target/new-panic-corpus.tar.gz"
           fi
 
@@ -136,39 +138,3 @@ jobs:
         with:
           name: triage-reports
           path: target/triage
-
-      - name: Open Signatures & Corpus Pull Request
-        id: cpr
-        uses: peter-evans/create-pull-request@v8
-        continue-on-error: true
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          base: main
-          draft: false
-          add-paths: |
-            signatures/rust-panic.json
-            signatures/fixed-history.json
-            testcases/corpus/
-          commit-message: "chore(fuzzing): update panic signatures and minimized corpus"
-          title: "chore: update panic signatures and corpus from run ${{ github.run_id }}"
-          body: |
-            Automated maintenance run:
-            - Pruned closed/fixed issues from `rust-panic.json` to `fixed-history.json`
-            - Added deduplicated draft signatures to `signatures/rust-panic.json`
-            - Added deduplicated minimized testcases to `testcases/corpus/`
-
-            Source run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          branch: "automated/panic-signatures-${{ github.run_id }}"
-          delete-branch: true
-
-      - name: Report Pull Request Status
-        if: always()
-        run: |
-          PR_URL="${{ steps.cpr.outputs.pull-request-url }}"
-          BRANCH="automated/panic-signatures-${{ github.run_id }}"
-          if [ -n "$PR_URL" ]; then
-            echo "### Pull Request Created: [$PR_URL]($PR_URL)" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "### Signatures and corpus updated on branch: \`$BRANCH\`" >> $GITHUB_STEP_SUMMARY
-            echo "[Click here to review and open the Pull Request on GitHub](https://github.com/${{ github.repository }}/pull/new/$BRANCH)" >> $GITHUB_STEP_SUMMARY
-          fi

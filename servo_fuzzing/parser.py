@@ -25,7 +25,10 @@ class CrashInfo:
 def normalize_source_path(path_str: str) -> str:
     clean = re.sub(r":\d+(?::\d+)?$", "", path_str.strip())
 
-    m = re.search(r"/(?:git/checkouts|checkouts)/[^/]+/[^/]+/((?:style|components|ports|tests)/.+\.rs)", clean)
+    m = re.search(r"/(?:git/checkouts|checkouts)/[^/]+/[^/]+/(.+\.rs)", clean)
+    if m:
+        return m.group(1)
+    m = re.search(r"(?:/rustc/[0-9a-f]+|/lib/rustlib/src/rust)/(library/.+\.rs)", clean)
     if m:
         return m.group(1)
     m = re.search(r"stylo-[^/]+/[^/]+/((?:style|components)/.+\.rs)", clean)
@@ -160,6 +163,40 @@ def extract_stack_frames(output: str) -> list[str]:
     return frames
 
 
+ASSERT_OPERANDS_PATTERN = re.compile(
+    r"(?P<head>assertion `[^`\n]+` failed[^\n]*)\n\s*left: [^\n]*\n\s*(?P<last>right: [^\n]*)"
+)
+MAX_MESSAGE_CONTINUATION_LINES = 5
+
+
+def _unclosed_brackets(text: str) -> int:
+    return sum(text.count(c) for c in ")]}") - sum(text.count(c) for c in "([{")
+
+
+def _full_panic_message(message: str, output: str) -> str:
+    """Recover the start of a panic message that spans several lines.
+
+    The panic hook prints the location after the last line, so `message` is only that
+    last line: ` right: <value>` for `assert_eq!`, or the tail of an `assert!`
+    condition that rustfmt wrapped.
+    """
+    if message.lstrip().startswith("right: "):
+        for m in ASSERT_OPERANDS_PATTERN.finditer(output):
+            if m.group("last").startswith(message.strip()):
+                return m.group("head")
+        return message
+
+    position = output.find(message)
+    if position == -1 or _unclosed_brackets(message) <= 0:
+        return message
+    joined = message.strip()
+    for line in reversed(output[:position].splitlines()[-MAX_MESSAGE_CONTINUATION_LINES:]):
+        joined = f"{line.strip()} {joined}"
+        if _unclosed_brackets(joined) <= 0:
+            return joined
+    return message
+
+
 def _make_crash_info(
     message: str,
     path_str: str,
@@ -168,6 +205,7 @@ def _make_crash_info(
     line: Optional[str] = None,
     col: Optional[str] = None,
 ) -> CrashInfo:
+    message = _full_panic_message(message, output)
     if message.startswith("panic: "):
         message = message[7:].strip()
     return CrashInfo(

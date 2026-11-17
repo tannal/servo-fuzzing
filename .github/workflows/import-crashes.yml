@@ -46,8 +46,7 @@ on:
     types: [created]
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
   issues: write
 
 jobs:
@@ -72,6 +71,16 @@ jobs:
 
       - name: Install servo-fuzzing
         run: pip install -e .
+
+      # Only for this run; the committed files are updated by sync-signatures.yml.
+      - name: Refresh Signatures from Upstream B-fuzzing Issues
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          servo-fuzzing sync-issues \
+            --signatures signatures/rust-panic.json \
+            --history signatures/fixed-history.json \
+            || echo "::warning::Upstream sync failed; triaging against the committed signatures"
 
       - name: Install Servoshell Runtime Dependencies
         run: |
@@ -145,7 +154,7 @@ jobs:
           servo-fuzzing import target/import \
             --binary ./servo/servoshell \
             --signatures signatures/rust-panic.json \
-            --corpus testcases/corpus \
+            --corpus target/panic-corpus \
             --output target/triage \
             --timeout "$TIMEOUT_VAL" \
             --jobs "$JOBS_VAL" \
@@ -177,27 +186,17 @@ jobs:
             gh issue comment ${{ github.event.issue.number }} --body-file target/triage/report.md
           fi
 
-      - name: Open Signatures & Minimized Corpus Pull Request
-        id: cpr
-        uses: peter-evans/create-pull-request@v8
-        continue-on-error: true
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          base: main
-          draft: false
-          add-paths: |
-            signatures/rust-panic.json
-            signatures/fixed-history.json
-            testcases/corpus/
-          commit-message: "feat(corpus): triage, deduplicate and add minimized reproducers"
-          title: "feat(corpus): triage and add minimized reproducers (run ${{ github.run_id }})"
-          body: |
-            Automated crash import, triage, and deduplication:
-            - Filtered out non-crashing tests, timeouts, and duplicate panics
-            - Auto-minimized unique reproducers via delta debugging into `testcases/corpus/`
-            - Generated clean, descriptive names (no hashes or opaque IDs)
-            - Added draft panic signatures to `signatures/rust-panic.json`
+      - name: Package Minimized Reproducers
+        if: always()
+        run: |
+          if [ -d target/panic-corpus ] && find target/panic-corpus -name '*.html' -print -quit | grep -q .; then
+            tar -czf target/new-panic-corpus.tar.gz -C target/panic-corpus .
+          fi
 
-            Workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          branch: automated/import-crashes-${{ github.run_id }}
-          delete-branch: true
+      - name: Upload Minimized Reproducers
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: new-panic-corpus
+          path: target/new-panic-corpus.tar.gz
+          if-no-files-found: ignore

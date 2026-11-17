@@ -103,7 +103,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         default=str(Path(__file__).resolve().parent.parent / "signatures/rust-panic.json"),
     )
     parser.add_argument("--output", default="target/campaign", help="Output directory for reports")
-    parser.add_argument("--corpus", default="testcases/corpus", help="Directory for new panic inputs")
+    parser.add_argument("--corpus", default="target/panic-corpus", help="Directory for new panic inputs")
     parser.add_argument("--count", type=int, default=30, help="Inputs per installed generator per round")
     parser.add_argument("--iterations", type=int, default=0, help="Rounds to run (0 for continuous)")
     parser.add_argument("--jobs", "-j", type=int, default=4)

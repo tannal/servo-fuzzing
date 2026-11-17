@@ -124,6 +124,7 @@ def import_crashes(
     signatures_path: Path,
     corpus_dir: Optional[Path] = None,
     output_dir: Optional[Path] = None,
+    drafts_path: Optional[Path] = None,
     timeout: float = 2.0,
     concurrency: int = 4,
     max_tests: Optional[int] = None,
@@ -244,6 +245,7 @@ def import_crashes(
             triage_dir=out_dir,
             signatures_path=sig_path,
             corpus_out_dir=corpus_out,
+            drafts_path=drafts_path,
             reduce_binary=binary_path if reduce else None,
             reduce_timeout=reduce_timeout,
             servo_args=servo_args,
@@ -263,7 +265,7 @@ def import_crashes(
     print(f"Historical Regressions : {summary.regressions} (closed issues reappeared)")
     print(f"Execution Errors       : {summary.errors}")
     print(f"New Crashes Triaged    : {summary.new_crashes}")
-    print(f"Unique Panics Added    : {len(added_sigs)} (after deduplication)")
+    print(f"Unique New Panics      : {len(added_sigs)} (after deduplication)")
     if added_sigs:
         print("------------------------------------------------------------------------")
         for s in added_sigs:

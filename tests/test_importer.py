@@ -148,9 +148,11 @@ class TestImporter(unittest.TestCase):
             # Only 1 unique signature should be added due to deduplication
             self.assertEqual(summary["signatures_added"], 1)
 
-            saved_sigs = json.loads(sig_path.read_text(encoding="utf-8"))["signatures"]
-            self.assertEqual(len(saved_sigs), 1)
-            sig_id = saved_sigs[0]["id"]
+            # The draft is written next to the triage output; the known signatures stay untouched
+            self.assertEqual(json.loads(sig_path.read_text(encoding="utf-8"))["signatures"], [])
+            drafts = json.loads((output_dir / "draft-signatures.json").read_text(encoding="utf-8"))["signatures"]
+            self.assertEqual(len(drafts), 1)
+            sig_id = drafts[0]["id"]
             self.assertTrue((corpus_dir / f"{sig_id}.html").exists())
 
             # Report should only have 1 unique crash row, and unpacked_raw should not pollute output_dir
