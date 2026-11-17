@@ -15,7 +15,7 @@ from .generators import GeneratorManager
 from .github_sync import (
     sync_signatures_from_github,
 )
-from .proposals import existing_proposal, propose_panics
+from .proposals import Proposal, existing_proposal, propose_panics
 from .reducer import reduce_delta_lines, reduce_with_lithium
 from .reporter import make_signature_draft
 from .reproduce import estimate_reproducibility, parallelize_test, repeat_test
@@ -360,7 +360,7 @@ def cmd_propose(args: argparse.Namespace) -> int:
     binary = Path(args.binary).resolve()
     repo = args.repo or os.environ.get("GITHUB_REPOSITORY") or get_default_bundle_repo()
 
-    def find_existing(signature_id: str) -> Optional[str]:
+    def find_existing(signature_id: str) -> Optional[Proposal]:
         try:
             return existing_proposal(repo, signature_id, args.token)
         except Exception as exc:

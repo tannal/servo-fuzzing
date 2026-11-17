@@ -327,7 +327,7 @@ reports/<id>/                  the evidence pack: issue.md, context.json, AGENT.
 3. People and agents add root cause notes to `reports/<id>/analysis.md` on that branch, or on `main` after the merge.
 4. Once the issue is filed in `servo/servo` with `B-fuzzing`, the sync pull request removes the pending signature and the report.
 
-A panic whose `new-panic/<id>` branch already has a pull request, open, merged or closed, is not proposed again; reopen the closed one to bring it back. At most `--max-panics` (default 5) are proposed per run. Pull requests opened with the default `GITHUB_TOKEN` do not trigger the CI workflow.
+A panic whose `new-panic/<id>` branch already has a pull request, open, merged or closed, is not proposed again; reopen the closed one to bring it back. When that pull request is about a different panic that got the same descriptive id, the new one is proposed as `<id>-1`. At most `--max-panics` (default 5) are proposed per run. Pull requests opened with the default `GITHUB_TOKEN` do not trigger the CI workflow.
 
 ---
 

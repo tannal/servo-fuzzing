@@ -1,5 +1,6 @@
 """Tests for pending signatures and the per-panic proposals built from a triage run."""
 
+import base64
 import json
 import tempfile
 import unittest
@@ -10,7 +11,7 @@ from servo_fuzzing.cli import main as cli_main
 from servo_fuzzing.evidence import Evidence
 from servo_fuzzing.executor import TestResult, TestStatus
 from servo_fuzzing.parser import CrashInfo
-from servo_fuzzing.proposals import existing_proposal, propose_panics
+from servo_fuzzing.proposals import Proposal, existing_proposal, propose_panics
 from servo_fuzzing.signatures import (
     load_known_signatures,
     load_pending_signatures,
@@ -95,11 +96,40 @@ class ProposalTests(unittest.TestCase):
 
         proposed = self.propose(
             gather=gather,
-            find_existing=lambda i: "https://github.com/tannal/servo-fuzzing/pull/20" if i == "known-one" else None,
+            find_existing=lambda i: Proposal("https://x/pull/20", draft("known-one")) if i == "known-one" else None,
         )
         self.assertEqual([entry["id"] for entry in proposed], ["new-one"])
         self.assertEqual(ran, ["new-one.html"])
         self.assertFalse((self.out / "reports" / "known-one").exists())
+
+    def test_unreadable_proposal_counts_as_the_same_panic(self):
+        self.write_drafts(draft("known-one"))
+        self.assertEqual(self.propose(find_existing=lambda i: Proposal("https://x/pull/20", None)), [])
+
+    def test_other_panic_with_the_same_id_gets_a_suffix(self):
+        # "attempt to add with overflow" and "attempt to subtract with overflow" share an id.
+        self.write_drafts(draft("lib-overflow", message="attempt to subtract with overflow"))
+        pulls = {
+            "lib-overflow": Proposal("https://x/pull/20", draft("lib-overflow", message="attempt to add with overflow")),
+            "lib-overflow-1": Proposal("https://x/pull/21", draft("lib-overflow-1", message="attempt to multiply with overflow")),
+        }
+        gather = lambda t: evidence_for(t, message="attempt to subtract with overflow")  # noqa: E731
+        proposed = self.propose(gather=gather, find_existing=pulls.get)
+        self.assertEqual([entry["id"] for entry in proposed], ["lib-overflow-2"])
+        self.assertEqual(load_pending_signatures(self.out / "signatures" / "pending")[0]["id"], "lib-overflow-2")
+        self.assertTrue((self.out / "reports" / "lib-overflow-2" / "lib-overflow-2.html").is_file())
+        self.assertIn("reports/lib-overflow-2", proposed[0]["issue"])
+
+        pulls["lib-overflow-2"] = Proposal("https://x/pull/22", proposed[0])
+        self.assertEqual(self.propose(gather=gather, find_existing=pulls.get), [])
+
+    def test_suffix_does_not_take_the_id_of_another_draft(self):
+        self.write_drafts(draft("a", message="one"), draft("a-1", message="two"))
+        proposed = self.propose(
+            gather=lambda t: evidence_for(t, message="one" if t.stem == "a-2" else "two"),
+            find_existing=lambda i: Proposal("https://x/pull/20", draft("a", message="zero")) if i == "a" else None,
+        )
+        self.assertEqual([entry["id"] for entry in proposed], ["a-2", "a-1"])
 
     def test_reproducer_showing_another_panic_is_left_out(self):
         self.write_drafts(draft("flaky"))
@@ -122,10 +152,15 @@ class ProposalTests(unittest.TestCase):
         self.assertEqual(self.propose(), [])
 
     def test_existing_proposal_queries_pull_requests_of_any_state(self):
-        with patch("servo_fuzzing.proposals._get_json", return_value=[{"html_url": "https://x/pull/3"}]) as get:
-            self.assertEqual(existing_proposal(REPO, "a-b", "t"), "https://x/pull/3")
-        url = get.call_args.args[0]
-        self.assertIn("/repos/tannal/servo-fuzzing/pulls?state=all&head=tannal%3Anew-panic/a-b", url)
+        pull = {"html_url": "https://x/pull/3", "head": {"sha": "abc123"}}
+        blob = {"content": base64.encodebytes(json.dumps(draft("a-b")).encode()).decode()}
+        with patch("servo_fuzzing.proposals._get_json", side_effect=[[pull], blob]) as get:
+            self.assertEqual(existing_proposal(REPO, "a-b", "t"), Proposal("https://x/pull/3", draft("a-b")))
+        urls = [call.args[0] for call in get.call_args_list]
+        self.assertIn("/repos/tannal/servo-fuzzing/pulls?state=all&head=tannal%3Anew-panic/a-b", urls[0])
+        self.assertIn("/repos/tannal/servo-fuzzing/contents/signatures/pending/a-b.json?ref=abc123", urls[1])
+        with patch("servo_fuzzing.proposals._get_json", side_effect=[[pull], OSError("404")]):
+            self.assertEqual(existing_proposal(REPO, "a-b", "t"), Proposal("https://x/pull/3", None))
         with patch("servo_fuzzing.proposals._get_json", return_value=[]):
             self.assertIsNone(existing_proposal(REPO, "a-b", None))
 
@@ -139,7 +174,7 @@ class ProposalTests(unittest.TestCase):
 
         with patch("servo_fuzzing.cli.gather_evidence", side_effect=gather), patch(
             "servo_fuzzing.cli.existing_proposal",
-            side_effect=lambda repo, i, token: "https://x/pull/3" if i == "known-one" else None,
+            side_effect=lambda repo, i, token: Proposal("https://x/pull/3", None) if i == "known-one" else None,
         ):
             code = cli_main([
                 "propose", "--drafts", str(self.drafts), "--corpus", str(self.corpus), "--output", str(self.out),
