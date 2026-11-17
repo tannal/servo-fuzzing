@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import shlex
 import sys
 from pathlib import Path
 from typing import Any, Optional
 
+from .bisect import DEFAULT_ASSET, DEFAULT_NIGHTLY_REPO, format_bisect_report, run_bisect
 from .bundle import download_bundle, pack_bundle, unpack_bundle
 from .executor import run_single_test
 from .generators import GeneratorManager
@@ -172,6 +174,37 @@ def cmd_reduce(args: argparse.Namespace) -> int:
         print(f"Error: {exc}")
         return 1
     print(f"Reduced reproducer written to: {res_path}")
+    return 0
+
+
+def cmd_bisect(args: argparse.Namespace) -> int:
+    testcase = Path(args.testcase).resolve()
+    if not testcase.exists():
+        print(f"Error: Testcase not found: {testcase}")
+        return 1
+    try:
+        result, commits = run_bisect(
+            testcase=testcase,
+            pattern=args.pattern,
+            good=args.good,
+            bad=args.bad,
+            attempts=args.attempts,
+            timeout=args.timeout,
+            servo_args=shlex.split(args.servo_args),
+            cache_dir=Path(args.cache_dir),
+            repo=args.repo,
+            asset_name=args.asset,
+            token=args.token,
+            keep_builds=args.keep_builds,
+        )
+    except ValueError as exc:
+        print(f"Error: {exc}")
+        return 1
+    report = format_bisect_report(result, testcase, commits)
+    print("\n" + report)
+    if args.output:
+        Path(args.output).write_text(report, encoding="utf-8")
+        print(f"Bisect report saved to {args.output}")
     return 0
 
 
@@ -389,6 +422,22 @@ def main(argv: Optional[list[str]] = None) -> int:
     p_reduce.add_argument("--timeout", type=float, default=3.0, help="Per-run timeout in seconds")
     p_reduce.add_argument("--attempts", type=int, default=1, help="Runs per candidate for intermittent panics")
     p_reduce.set_defaults(func=cmd_reduce)
+
+    p_bisect = subparsers.add_parser("bisect", help="Bisect a crash across Servo nightly builds")
+    p_bisect.add_argument("testcase", help="Path to testcase HTML")
+    p_bisect.add_argument("--pattern", default=None, help="Regexp the output must match (default: any panic)")
+    p_bisect.add_argument("--good", help="Known good nightly tag (YYYY-MM-DD); searched backwards if omitted")
+    p_bisect.add_argument("--bad", help="Known bad nightly tag (YYYY-MM-DD); defaults to the latest nightly")
+    p_bisect.add_argument("--attempts", type=int, default=3, help="Runs per nightly; any match counts as bad")
+    p_bisect.add_argument("--timeout", type=float, default=10.0, help="Per-run timeout in seconds")
+    p_bisect.add_argument("--servo-args", default="-xfz", help="Arguments passed to servoshell")
+    p_bisect.add_argument("--cache-dir", default="target/bisect", help="Directory for downloaded nightlies")
+    p_bisect.add_argument("--repo", default=DEFAULT_NIGHTLY_REPO, help="GitHub repo hosting nightly releases")
+    p_bisect.add_argument("--asset", default=DEFAULT_ASSET, help="Release asset name for this platform")
+    p_bisect.add_argument("--token", help="GitHub token (defaults to GITHUB_TOKEN / GH_TOKEN)")
+    p_bisect.add_argument("--keep-builds", action="store_true", help="Keep extracted nightlies after testing")
+    p_bisect.add_argument("-o", "--output", help="Save bisect report to file")
+    p_bisect.set_defaults(func=cmd_bisect)
 
     p_rep = subparsers.add_parser("report", help="Generate GitHub issue draft for a testcase")
     p_rep.add_argument("testcase", help="Path to testcase HTML")

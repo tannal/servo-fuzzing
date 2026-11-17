@@ -108,6 +108,9 @@ servo-fuzzing generate -n 100 -o testcases/  # runs all installed tools
 # Reproduce and calculate reproducibility rate for a flaky crash
 servo-fuzzing reproduce testcases/issue-49411.html --binary ./servo/servoshell --pattern "parent_proxy"
 
+# Bisect a crash across nightly builds to find the upstream commit range
+servo-fuzzing bisect testcase.html --pattern "parent_proxy"
+
 # Generate a formatted GitHub issue report from a crash
 servo-fuzzing report testcase.html --binary ./servo/servoshell
 
@@ -192,6 +195,25 @@ servo-fuzzing reproduce testcase.html \
     --repeat 10 \
     --parallel 20
 ```
+
+### Bisecting Across Nightlies
+
+Find the upstream commit range that introduced a crash by bisecting the
+[Servo nightly builds](https://github.com/servo/servo-nightly-builds/releases):
+
+```bash
+servo-fuzzing bisect testcases/corpus/crash.html \
+    --pattern "Found hoisted box" \
+    -o target/bisect/report.md
+```
+
+The latest nightly must reproduce the crash. Without `--good`, older nightlies
+are searched with doubling steps until one does not reproduce, then binary
+search narrows it to adjacent nightlies. The report links the
+`servo/servo` compare range between the last good and first bad nightly.
+Use `--good`/`--bad YYYY-MM-DD` to bound the search, `--attempts` for flaky
+crashes and `--asset` for other platforms. Set `GITHUB_TOKEN` to avoid API
+rate limits.
 
 ### Reducing Test Cases with Lithium
 
