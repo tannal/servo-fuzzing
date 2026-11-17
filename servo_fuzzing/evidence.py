@@ -24,6 +24,7 @@ ISSUE_BACKTRACE_FRAMES = 40
 ANALYSIS_FILE = "analysis.md"
 
 _FRAME_RE = re.compile(r"^\s*\d+:\s")
+_FRAME_LOCATION_RE = re.compile(r"^\s+at\s")
 _FRAME_MODULE_RE = re.compile(r"<?([a-z_][a-z0-9_]*(?:::[a-z_][a-z0-9_]*)+)")
 _VERSION_SHA_RE = re.compile(r"-([0-9a-f]{7,40})\b")
 _BACKTRACE_END = "__rust_begin_short_backtrace"
@@ -192,10 +193,17 @@ def trimmed_backtrace(output: str, max_frames: int = ISSUE_BACKTRACE_FRAMES) -> 
     if first_frame is None:
         return "\n".join(lines[-max_frames:])
     kept = lines[max(0, first_frame - 1):first_frame]
+    frames = 0
+    in_machinery = True
     for line in lines[first_frame:]:
-        if not _FRAME_RE.match(line) or _BACKTRACE_END in line or len(kept) > max_frames:
+        if _FRAME_RE.match(line):
+            if _BACKTRACE_END in line or frames >= max_frames:
+                break
+            in_machinery = in_machinery and bool(_PANIC_MACHINERY_RE.search(line))
+            frames += not in_machinery
+        elif not _FRAME_LOCATION_RE.match(line):
             break
-        if len(kept) > 1 or not _PANIC_MACHINERY_RE.search(line):
+        if not in_machinery:
             kept.append(line)
     return "\n".join(kept)
 
@@ -376,7 +384,8 @@ def write_evidence_pack(evidence: Evidence, out_dir: Path, include_analysis: boo
         shutil.copy2(evidence.testcase, testcase_copy)
     original_name = None
     if evidence.original and evidence.original.is_file():
-        original_name = f"original{evidence.original.suffix}"
+        stem = "unreduced" if evidence.testcase.stem == "original" else "original"
+        original_name = f"{stem}{evidence.original.suffix}"
         shutil.copy2(evidence.original, out_dir / original_name)
     (out_dir / "output.log").write_text(evidence.result.combined_output, encoding="utf-8")
     if evidence.crash:

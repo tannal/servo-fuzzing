@@ -123,6 +123,21 @@ class TestEvidence(unittest.TestCase):
         for noise in ("libEGL", "backtrace::print", "panic_fmt", "rust_begin_short_backtrace", "start_thread", "renderer noise"):
             self.assertNotIn(noise, trimmed)
 
+    def test_trimmed_backtrace_keeps_source_locations_between_frames(self):
+        output = (
+            "boom (thread Script#1, at components/layout/x.rs:1)\n"
+            "   0: std::panicking::begin_panic\n"
+            "             at /rustc/abc/library/std/src/panicking.rs:1\n"
+            "   1: <layout::table::layout::TableLayout>::layout\n"
+            "             at ./components/layout/table/layout.rs:42\n"
+            "   2: start_thread\n"
+        )
+        self.assertEqual(trimmed_backtrace(output, max_frames=1).splitlines(), [
+            "boom (thread Script#1, at components/layout/x.rs:1)",
+            "   1: <layout::table::layout::TableLayout>::layout",
+            "             at ./components/layout/table/layout.rs:42",
+        ])
+
     def test_filled_analysis_drops_empty_sections(self):
         text = (
             "# Analysis\n\n<!-- note -->\n\n## Readable testcase\n\n"
@@ -174,6 +189,27 @@ class TestEvidence(unittest.TestCase):
 
             write_evidence_pack(evidence, pack, include_analysis=True)
             self.assertIn("Rebuilt as Replaced.", (pack / "issue.md").read_text())
+
+    def test_pack_does_not_overwrite_a_testcase_named_original(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            evidence = make_evidence(tmp)
+            evidence.testcase = evidence.testcase.rename(tmp / "original.html")
+            evidence.original = tmp / "generated.html"
+            evidence.original.write_text("<p>big</p>")
+
+            write_evidence_pack(evidence, tmp / "pack")
+            self.assertIn("table-cell", (tmp / "pack" / "original.html").read_text())
+            self.assertEqual((tmp / "pack" / "unreduced.html").read_text(), "<p>big</p>")
+
+    def test_report_without_panic_text_still_renders(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            evidence = make_evidence(tmp)
+            evidence.result.crash_info = None
+            issue = write_evidence_pack(evidence, tmp / "pack").read_text()
+            self.assertIn("Crash in crash.html", issue)
+            self.assertIsNone(json.loads((tmp / "pack" / "context.json").read_text())["crash"])
 
 
 if __name__ == "__main__":
