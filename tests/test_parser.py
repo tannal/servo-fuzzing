@@ -52,6 +52,45 @@ stack backtrace:
         self.assertEqual(crash.line, 950)
         self.assertIn("<script::dom::servoparser::ParserContext>::initialize_document_object", crash.stack_frames)
 
+    def test_css_warning_before_panic_is_not_the_panic(self):
+        sample_output = """
+    40:325 Unsupported property declaration: '-webkit-border-image: repeating-radial-gradient(at center 10em center 28em,rgb(182,37,37)) 16% 1 10% 54 fill / 1 0 1 42517;', OtherInvalidValue
+[2026-11-17T05:13:36Z WARN  servoshell::panic_hook] Panic hook called.
+internal error: entered unreachable code: Found hoisted box with missing or non-BoxFragment. (thread Script#1, at components/layout/display_list/stacking_context.rs:633)
+   0: servoshell::backtrace::print
+   1: servoshell::panic_hook::panic_hook
+   2: <layout::fragment_tree::fragment::Fragment>::build_stacking_context_tree
+"""
+        info = parse_crash(sample_output)
+        self.assertIsNotNone(info)
+        self.assertEqual(
+            info.message,
+            "internal error: entered unreachable code: Found hoisted box with missing or non-BoxFragment.",
+        )
+        self.assertEqual(info.source_file, "components/layout/display_list/stacking_context.rs")
+        self.assertEqual(info.thread, "Script#1")
+        self.assertEqual(info.line, 633)
+
+    def test_panic_without_rust_path_is_found_after_hook_marker(self):
+        sample_output = """
+    1:10 Unsupported property declaration: 'background: radial-gradient(at top left, red, blue)', OtherInvalidValue
+[2026-11-17T05:13:36Z WARN  servoshell::panic_hook] Panic hook called.
+index out of bounds (thread Script#2, at <unknown>)
+   0: servoshell::backtrace::print
+   1: servoshell::panic_hook::panic_hook
+"""
+        info = parse_crash(sample_output)
+        self.assertIsNotNone(info)
+        self.assertEqual(info.message, "index out of bounds")
+        self.assertEqual(info.thread, "Script#2")
+
+    def test_css_warning_alone_is_not_a_crash(self):
+        sample_output = (
+            "    1:10 Unsupported property declaration: "
+            "'background: radial-gradient(at top left, red, blue)', OtherInvalidValue\n"
+        )
+        self.assertIsNone(parse_crash(sample_output))
+
     def test_parse_condensed_backtrace(self):
         sample_condensed = (
             "assertion failed: parent_proxy.currently_active().is_some() (thread Script#4, at components/script/dom/window/windowproxy.rs:950) "
