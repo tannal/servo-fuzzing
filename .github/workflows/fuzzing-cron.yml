@@ -4,6 +4,15 @@ on:
   schedule:
     - cron: '0 0 * * 0'
   workflow_dispatch:
+    inputs:
+      bundle_timeouts:
+        description: 'Timed-out testcases in the published bundle (default: BUNDLE_TIMEOUTS repo variable, else exclude)'
+        type: choice
+        default: default
+        options:
+          - default
+          - exclude
+          - include
 
 permissions:
   contents: write
@@ -93,7 +102,9 @@ jobs:
           path: target/new-panic-corpus.tar.gz
           if-no-files-found: ignore
 
-      - name: Pack Clean Active Bundle (Excluding timeout hangs)
+      - name: Pack Clean Active Bundle
+        env:
+          BUNDLE_TIMEOUTS: ${{ (inputs.bundle_timeouts != 'default' && inputs.bundle_timeouts) || vars.BUNDLE_TIMEOUTS || 'exclude' }}
         run: |
           servo-fuzzing bundle pack \
             --source target/generated \
@@ -102,6 +113,7 @@ jobs:
             --binary ./servo/servoshell \
             --jobs 4 \
             --timeout 2.0 \
+            --timeouts "$BUNDLE_TIMEOUTS" \
             --max-tests 300
 
       - name: Upload Bundle Artifact

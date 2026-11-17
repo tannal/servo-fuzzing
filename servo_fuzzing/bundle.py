@@ -14,6 +14,7 @@ from typing import Optional
 from .executor import TestStatus, run_single_test
 
 DEFAULT_BUNDLE_ASSET = "fuzz-bundle-latest.tar.gz"
+DEFAULT_MAX_TIMEOUT_TESTS = 50
 
 
 def get_default_bundle_repo() -> str:
@@ -125,13 +126,30 @@ def pack_bundle(
     timeout: float = 2.0,
     from_triage: Optional[Path] = None,
     jobs: int = 4,
+    include_timeouts: bool = False,
+    max_timeout_tests: int = DEFAULT_MAX_TIMEOUT_TESTS,
 ) -> Path:
+    """Pack testcases into a bundle.
+
+    Timed-out testcases are dropped unless ``include_timeouts`` is set, in which
+    case up to ``max_timeout_tests`` of them are kept: a replay never fails on a
+    timeout, but each one costs a full timeout and may still crash before it.
+    """
     source_dir = Path(source_dir).resolve()
     output_tar = Path(output_tar).resolve()
     output_tar.parent.mkdir(parents=True, exist_ok=True)
 
     all_html = sorted(list(source_dir.rglob("*.html")) + list(source_dir.rglob("*.htm")))
     selected: list[Path] = []
+
+    def select(passing: list[Path], timed_out: list[Path]) -> list[Path]:
+        kept_timeouts = timed_out[: max(0, min(max_timeout_tests, max_tests))] if include_timeouts else []
+        kept = set(passing[: max_tests - len(kept_timeouts)]) | set(kept_timeouts)
+        print(
+            f"Timeouts: {len(kept_timeouts)} of {len(timed_out)} "
+            f"{'included' if include_timeouts else 'excluded'}."
+        )
+        return [tc for tc in all_html if tc in kept]
 
     print(f"Scanning {len(all_html)} testcases in {source_dir}...")
 
@@ -141,9 +159,15 @@ def pack_bundle(
         if summary_file.exists():
             try:
                 summary_data = json.loads(summary_file.read_text(encoding="utf-8"))
-                pass_paths = {Path(item["testcase"]).resolve() for item in summary_data.get("results", []) if item.get("status") == "PASS"}
-                selected = [tc for tc in all_html if tc.resolve() in pass_paths][:max_tests]
-                print(f"Selected {len(selected)} clean passing testcases directly from {summary_file.name}")
+                statuses = {
+                    Path(item["testcase"]).resolve(): item.get("status")
+                    for item in summary_data.get("results", [])
+                }
+                selected = select(
+                    [tc for tc in all_html if statuses.get(tc.resolve()) == TestStatus.PASS.value],
+                    [tc for tc in all_html if statuses.get(tc.resolve()) == TestStatus.TIMEOUT.value],
+                )
+                print(f"Selected {len(selected)} testcases directly from {summary_file.name}")
             except Exception as e:
                 print(f"Warning: Failed to parse triage summary from {summary_file}: {e}")
 
@@ -162,8 +186,9 @@ def pack_bundle(
             err_msg = health.combined_output.strip() or health.error_message or "Unknown failure"
             raise RuntimeError(f"Cannot filter bundle: servoshell failed health check:\n{err_msg}")
 
-        print(f"Filtering out tests that hang/timeout using {bin_path} (timeout={timeout}s, jobs={jobs})...")
-        discarded_timeouts = 0
+        print(f"Classifying tests using {bin_path} (timeout={timeout}s, jobs={jobs})...")
+        passing: list[Path] = []
+        timed_out: list[Path] = []
         discarded_errors = 0
 
         def check_case(tc: Path):
@@ -178,13 +203,14 @@ def pack_bundle(
         with ThreadPoolExecutor(max_workers=jobs) as pool:
             for tc, res in pool.map(check_case, all_html):
                 if res.status == TestStatus.TIMEOUT:
-                    discarded_timeouts += 1
+                    timed_out.append(tc)
                 elif res.status != TestStatus.PASS:
                     discarded_errors += 1
-                elif len(selected) < max_tests:
-                    selected.append(tc)
+                else:
+                    passing.append(tc)
 
-        print(f"Filter summary: {len(selected)} kept, {discarded_timeouts} timeouts discarded, {discarded_errors} errors discarded.")
+        selected = select(passing, timed_out)
+        print(f"Filter summary: {len(selected)} kept, {discarded_errors} errors discarded.")
     elif not selected:
         selected = all_html[:max_tests]
 

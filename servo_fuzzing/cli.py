@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from .bisect import DEFAULT_ASSET, DEFAULT_NIGHTLY_REPO, format_bisect_report, run_bisect
-from .bundle import download_bundle, pack_bundle, unpack_bundle
+from .bundle import DEFAULT_MAX_TIMEOUT_TESTS, download_bundle, pack_bundle, unpack_bundle
 from .executor import run_single_test
 from .generators import GeneratorManager
 from .github_sync import (
@@ -316,6 +316,8 @@ def cmd_bundle(args: argparse.Namespace) -> int:
             timeout=args.timeout,
             from_triage=Path(args.from_triage) if getattr(args, "from_triage", None) else None,
             jobs=getattr(args, "jobs", 4),
+            include_timeouts=args.timeouts == "include",
+            max_timeout_tests=args.max_timeout_tests,
         )
     elif args.action == "unpack":
         unpack_bundle(
@@ -488,8 +490,20 @@ def main(argv: Optional[list[str]] = None) -> int:
     p_b_pack.add_argument("--source", default="testcases", help="Source directory containing HTML testcases")
     p_b_pack.add_argument("--output", default="target/fuzz-bundle-latest.tar.gz", help="Output tarball path")
     p_b_pack.add_argument("--max-tests", type=int, default=300, help="Maximum tests to bundle")
-    p_b_pack.add_argument("--binary", help="Binary to filter out hanging/timing-out cases")
-    p_b_pack.add_argument("--timeout", type=float, default=2.0, help="Timeout threshold to discard hanging tests")
+    p_b_pack.add_argument("--binary", help="Binary to classify passing/timing-out cases")
+    p_b_pack.add_argument("--timeout", type=float, default=2.0, help="Timeout threshold that marks a test as hanging")
+    p_b_pack.add_argument(
+        "--timeouts",
+        choices=("exclude", "include"),
+        default="exclude",
+        help="Whether testcases that time out go into the bundle (default: exclude)",
+    )
+    p_b_pack.add_argument(
+        "--max-timeout-tests",
+        type=int,
+        default=DEFAULT_MAX_TIMEOUT_TESTS,
+        help="With --timeouts include: maximum timed-out testcases to bundle",
+    )
     p_b_pack.add_argument("--from-triage", help="Triage directory to reuse existing results")
     p_b_pack.add_argument("--jobs", "-j", type=int, default=4, help="Concurrency for filtering timeouts")
 
