@@ -15,6 +15,7 @@ from servo_fuzzing.proposals import Proposal, existing_proposal, propose_panics
 from servo_fuzzing.signatures import (
     load_known_signatures,
     load_pending_signatures,
+    match,
     save_pending_signature,
     save_signatures,
     sync_draft_signatures,
@@ -130,6 +131,15 @@ class ProposalTests(unittest.TestCase):
             find_existing=lambda i: Proposal("https://x/pull/20", draft("a", message="zero")) if i == "a" else None,
         )
         self.assertEqual([entry["id"] for entry in proposed], ["a-2", "a-1"])
+
+    def test_placeholder_frame_is_not_published(self):
+        entry = draft("no-backtrace")
+        entry["stack_frames"] = ["<fill_in_distinctive_frame>"]
+        self.write_drafts(entry)
+        proposed = self.propose()
+        self.assertEqual(proposed[0]["stack_frames"], [])
+        crash = CrashInfo(message=entry["message"], source_file=entry["source_file"], line=1, stack_frames=[])
+        self.assertEqual(match(crash, load_pending_signatures(self.out / "signatures" / "pending")), "no-backtrace")
 
     def test_reproducer_showing_another_panic_is_left_out(self):
         self.write_drafts(draft("flaky"))

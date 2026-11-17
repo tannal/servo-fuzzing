@@ -15,6 +15,7 @@ from typing import Callable, NamedTuple, Optional
 from .bisect import _get_json
 from .evidence import Evidence, write_evidence_pack
 from .parser import normalize_panic_message, normalize_source_path
+from .reporter import PLACEHOLDER_FRAME
 from .signatures import CrashSignature, load_signatures, save_pending_signature
 
 BRANCH_PREFIX = "new-panic/"
@@ -136,6 +137,8 @@ def propose_panics(
 
         entry: CrashSignature = dict(draft)  # type: ignore[assignment]
         entry["id"] = signature_id
+        # A draft without a backtrace carries a placeholder frame that no crash can match.
+        entry["stack_frames"] = [frame for frame in draft["stack_frames"] if frame != PLACEHOLDER_FRAME]
         if entry["issue"].endswith("/TODO"):
             entry["issue"] = report_url(repo, signature_id)
         save_pending_signature(out_dir / PENDING_SUBDIR, entry)
