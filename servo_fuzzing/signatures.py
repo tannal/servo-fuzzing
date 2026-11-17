@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import shutil
 from pathlib import Path
-from typing import Optional, TypedDict
+from typing import Callable, Optional, TypedDict
 
 from .parser import CrashInfo, generate_descriptive_name, normalize_panic_message, normalize_source_path
 
@@ -106,6 +106,7 @@ def _unique_signature_id(
     msg: str,
     src: str,
     existing_sigs: list[CrashSignature],
+    taken: Callable[[str], bool] = lambda _id: False,
 ) -> str:
     draft_id = str(draft.get("id", "")).strip()
     if not draft_id or draft_id.startswith(("panic-", "sign-", "sig-")):
@@ -114,7 +115,7 @@ def _unique_signature_id(
         base_id = draft_id
     sig_id = base_id
     counter = 1
-    while any(s["id"] == sig_id for s in existing_sigs):
+    while any(s["id"] == sig_id for s in existing_sigs) or taken(sig_id):
         sig_id = f"{base_id}-{counter}"
         counter += 1
     return sig_id
@@ -155,6 +156,19 @@ def _save_corpus_repro(
         shutil.copy2(repro_file, target_html)
 
 
+def _load_corpus_drafts(corpus_path: Path) -> list[CrashSignature]:
+    """Drafts stored beside the reproducers of earlier runs as `<id>.json`."""
+    entries: list[CrashSignature] = []
+    for sidecar in sorted(corpus_path.glob("*.json")):
+        try:
+            entry = json.loads(sidecar.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if isinstance(entry, dict) and entry.get("id") == sidecar.stem and entry.get("message") and entry.get("source_file"):
+            entries.append(entry)
+    return entries
+
+
 def default_drafts_path(triage_dir: Path) -> Path:
     return Path(triage_dir) / "draft-signatures.json"
 
@@ -177,6 +191,11 @@ def sync_draft_signatures(
     The known signatures and the fixed history are only read: they are regenerated
     from upstream issues by `sync-issues`, so a crash becomes known once its issue
     is filed with the B-fuzzing label.
+
+    `drafts_path` describes this run only and is removed when the run has no new
+    panic. `corpus_out_dir` may be shared between runs: each reproducer `<id>.html`
+    has its draft beside it as `<id>.json`, so a panic seen before keeps its id and
+    a different panic never takes over an existing file.
     """
     signatures_path = Path(signatures_path)
     drafts_path = Path(drafts_path) if drafts_path else default_drafts_path(triage_dir)
@@ -185,12 +204,18 @@ def sync_draft_signatures(
     fixed_sigs = load_signatures(history_path) if history_path.exists() else []
     new_crashes_dir = Path(triage_dir) / "new_crashes"
 
+    drafts_path.unlink(missing_ok=True)
     if not new_crashes_dir.is_dir():
         return []
 
     corpus_path = Path(corpus_out_dir).resolve() if corpus_out_dir else None
+    corpus_drafts: list[CrashSignature] = []
     if corpus_path:
         corpus_path.mkdir(parents=True, exist_ok=True)
+        corpus_drafts = _load_corpus_drafts(corpus_path)
+
+    def id_taken_in_corpus(sig_id: str) -> bool:
+        return corpus_path is not None and any((corpus_path / f"{sig_id}{ext}").exists() for ext in (".html", ".json"))
 
     added: list[CrashSignature] = []
     seen_regressions: set[tuple[str, str]] = set()
@@ -237,7 +262,11 @@ def sync_draft_signatures(
                 else:
                     print(f"[DEDUP] Linked panic to existing open upstream issue: {issue_url}")
 
-        sig_id = _unique_signature_id(draft, msg, src, existing_sigs + fixed_sigs)
+        earlier = find_matching_signature_entry(msg, src, corpus_drafts)
+        if earlier:
+            sig_id = earlier["id"]
+        else:
+            sig_id = _unique_signature_id(draft, msg, src, existing_sigs + fixed_sigs, id_taken_in_corpus)
         new_entry: CrashSignature = {
             "id": sig_id,
             "message": msg,
@@ -251,6 +280,7 @@ def sync_draft_signatures(
 
         if corpus_path:
             _save_corpus_repro(crash_dir, corpus_path, new_entry, reduce_binary, reduce_timeout, args)
+            (corpus_path / f"{sig_id}.json").write_text(json.dumps(new_entry, indent=2) + "\n", encoding="utf-8")
 
     if added:
         save_signatures(drafts_path, added)

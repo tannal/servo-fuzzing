@@ -293,7 +293,7 @@ fuzz-bundle-latest.tar.gz
 | Archive | Content | Where it is published |
 |---|---|---|
 | `fuzz-bundle-latest.tar.gz` | Passing testcases to replay in Servo CI | Asset of the `latest` release and artifact `fuzz-bundle-latest`, from the weekly `fuzzing-cron.yml` run |
-| `new-panic-corpus.tar.gz` | Minimized reproducers of the new panics of one run, named `<signature id>.html` | Asset of the `latest` release (weekly run) and artifact `new-panic-corpus` |
+| `new-panic-corpus.tar.gz` | Minimized reproducers of the new panics of one run as `<signature id>.html`, each with its draft signature as `<signature id>.json` | Asset of the `latest` release (weekly run) and artifact `new-panic-corpus` |
 
 The `triage-reports` artifact is not a bundle: it is the `target/triage` directory with `report.md`, `summary.json`, `draft-signatures.json` and one folder per crash.
 

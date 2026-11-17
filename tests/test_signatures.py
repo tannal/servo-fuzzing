@@ -1,6 +1,7 @@
 """Tests for signature loading, validation, and matching."""
 
 import json
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
@@ -246,6 +247,74 @@ class TestSignatures(unittest.TestCase):
             self.assertEqual(load_signatures(drafts_file), added)
             self.assertEqual(load_signatures(history_file), [])
             self.assertEqual(load_signatures(sigs_file), self.signatures)
+
+
+class TestDraftsAcrossRuns(unittest.TestCase):
+    """`draft-signatures.json` describes one run; the reproducer corpus is shared between runs."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.sigs_file = self.root / "rust-panic.json"
+        save_signatures(self.sigs_file, [])
+        self.corpus = self.root / "corpus"
+        self.runs = 0
+
+    def run_triage(self, *messages, drafts_path=None):
+        self.runs += 1
+        triage = self.root / "triage"
+        new_crashes = triage / "new_crashes"
+        shutil.rmtree(new_crashes, ignore_errors=True)
+        for i, message in enumerate(messages):
+            crash_dir = new_crashes / f"crash_{i}"
+            crash_dir.mkdir(parents=True)
+            (crash_dir / "test.html").write_text(f"<p>run {self.runs}: {message}</p>")
+            (crash_dir / "signature_draft.json").write_text(
+                json.dumps(
+                    {
+                        "id": "panic-123",
+                        "message": message,
+                        "source_file": "components/layout/flow.rs",
+                        "stack_frames": ["layout::flow::layout"],
+                    }
+                )
+            )
+        return sync_draft_signatures(triage, self.sigs_file, corpus_out_dir=self.corpus, drafts_path=drafts_path)
+
+    def test_different_panics_with_the_same_name_keep_separate_reproducers(self):
+        first = self.run_triage("assertion failed: expected block size positive")
+        second = self.run_triage("assertion failed: expected block size nonnegative")
+
+        self.assertNotEqual(first[0]["id"], second[0]["id"])
+        self.assertIn("size positive", (self.corpus / f"{first[0]['id']}.html").read_text())
+        self.assertIn("size nonnegative", (self.corpus / f"{second[0]['id']}.html").read_text())
+        self.assertEqual(json.loads((self.corpus / f"{second[0]['id']}.json").read_text()), second[0])
+
+    def test_same_panic_keeps_its_id_in_a_later_run(self):
+        first = self.run_triage("assertion failed: expected block size positive")
+        self.run_triage("assertion failed: expected block size nonnegative")
+        again = self.run_triage("assertion failed: expected block size positive")
+
+        self.assertEqual(again[0]["id"], first[0]["id"])
+        self.assertEqual(len(list(self.corpus.glob("*.html"))), 2)
+        self.assertIn("run 3", (self.corpus / f"{first[0]['id']}.html").read_text())
+
+    def test_reproducer_without_a_draft_is_not_overwritten(self):
+        first = self.run_triage("assertion failed: expected block size positive")
+        (self.corpus / f"{first[0]['id']}.json").unlink()
+        second = self.run_triage("assertion failed: expected block size nonnegative")
+
+        self.assertNotEqual(first[0]["id"], second[0]["id"])
+        self.assertIn("size positive", (self.corpus / f"{first[0]['id']}.html").read_text())
+
+    def test_run_without_new_panics_removes_earlier_drafts(self):
+        for drafts_path in (None, self.root / "elsewhere" / "drafts.json"):
+            written = drafts_path or self.root / "triage" / "draft-signatures.json"
+            self.run_triage("assertion failed: expected block size positive", drafts_path=drafts_path)
+            self.assertTrue(written.exists())
+            self.assertEqual(self.run_triage(drafts_path=drafts_path), [])
+            self.assertFalse(written.exists())
 
 
 if __name__ == "__main__":

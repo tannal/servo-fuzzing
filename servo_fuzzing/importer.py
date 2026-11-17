@@ -14,6 +14,7 @@ from .reporter import write_artifacts
 from .runner import get_servo_version
 from .signatures import (
     CrashSignature,
+    default_drafts_path,
     default_fixed_history_path,
     load_signatures,
     sync_draft_signatures,
@@ -144,6 +145,8 @@ def import_crashes(
     # Clean existing new_crashes and any legacy unpacked_raw in triage directory
     shutil.rmtree(out_dir / "new_crashes", ignore_errors=True)
     shutil.rmtree(out_dir / "unpacked_raw", ignore_errors=True)
+    drafts_path = Path(drafts_path) if drafts_path else default_drafts_path(out_dir)
+    drafts_path.unlink(missing_ok=True)
 
     unpack_dir = out_dir.parent / f".{out_dir.name}_unpacked_raw"
     shutil.rmtree(unpack_dir, ignore_errors=True)
