@@ -14,6 +14,7 @@ from .reporter import write_artifacts
 from .runner import get_servo_version
 from .signatures import (
     CrashSignature,
+    default_drafts_path,
     default_fixed_history_path,
     load_signatures,
     sync_draft_signatures,
@@ -124,6 +125,7 @@ def import_crashes(
     signatures_path: Path,
     corpus_dir: Optional[Path] = None,
     output_dir: Optional[Path] = None,
+    drafts_path: Optional[Path] = None,
     timeout: float = 2.0,
     concurrency: int = 4,
     max_tests: Optional[int] = None,
@@ -143,6 +145,8 @@ def import_crashes(
     # Clean existing new_crashes and any legacy unpacked_raw in triage directory
     shutil.rmtree(out_dir / "new_crashes", ignore_errors=True)
     shutil.rmtree(out_dir / "unpacked_raw", ignore_errors=True)
+    drafts_path = Path(drafts_path) if drafts_path else default_drafts_path(out_dir)
+    drafts_path.unlink(missing_ok=True)
 
     unpack_dir = out_dir.parent / f".{out_dir.name}_unpacked_raw"
     shutil.rmtree(unpack_dir, ignore_errors=True)
@@ -244,6 +248,7 @@ def import_crashes(
             triage_dir=out_dir,
             signatures_path=sig_path,
             corpus_out_dir=corpus_out,
+            drafts_path=drafts_path,
             reduce_binary=binary_path if reduce else None,
             reduce_timeout=reduce_timeout,
             servo_args=servo_args,
@@ -263,7 +268,7 @@ def import_crashes(
     print(f"Historical Regressions : {summary.regressions} (closed issues reappeared)")
     print(f"Execution Errors       : {summary.errors}")
     print(f"New Crashes Triaged    : {summary.new_crashes}")
-    print(f"Unique Panics Added    : {len(added_sigs)} (after deduplication)")
+    print(f"Unique New Panics      : {len(added_sigs)} (after deduplication)")
     if added_sigs:
         print("------------------------------------------------------------------------")
         for s in added_sigs:

@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import shutil
 from pathlib import Path
-from typing import Optional, TypedDict
+from typing import Callable, Optional, TypedDict
 
 from .parser import CrashInfo, generate_descriptive_name, normalize_panic_message, normalize_source_path
 
@@ -34,8 +34,8 @@ def load_signatures(path: Path) -> list[CrashSignature]:
             if not isinstance(entry.get(field), str) or not entry[field].strip():
                 raise ValueError(f"Signature needs nonempty {field}")
         frames = entry.get("stack_frames")
-        if not isinstance(frames, list) or not frames or not all(isinstance(f, str) and f.strip() for f in frames):
-            raise ValueError("Signature needs nonempty stack_frames")
+        if not isinstance(frames, list) or not all(isinstance(f, str) and f.strip() for f in frames):
+            raise ValueError("Signature needs a stack_frames list of nonempty strings")
         if entry["id"] in seen:
             raise ValueError("Duplicate signature id")
         seen.add(entry["id"])
@@ -53,6 +53,11 @@ def save_signatures(path: Path, signatures: list[CrashSignature]) -> None:
 
 
 def match(crash: CrashInfo, signatures: list[CrashSignature]) -> Optional[str]:
+    """Return the id of the first signature whose message, source file and frames fit `crash`.
+
+    `stack_frames` must appear in order in the backtrace; an empty list places no
+    constraint on it.
+    """
     crash_norm = normalize_source_path(crash.source_file)
     crash_msg_norm = normalize_panic_message(crash.message)
     for entry in signatures:
@@ -101,6 +106,7 @@ def _unique_signature_id(
     msg: str,
     src: str,
     existing_sigs: list[CrashSignature],
+    taken: Callable[[str], bool] = lambda _id: False,
 ) -> str:
     draft_id = str(draft.get("id", "")).strip()
     if not draft_id or draft_id.startswith(("panic-", "sign-", "sig-")):
@@ -109,7 +115,7 @@ def _unique_signature_id(
         base_id = draft_id
     sig_id = base_id
     counter = 1
-    while any(s["id"] == sig_id for s in existing_sigs):
+    while any(s["id"] == sig_id for s in existing_sigs) or taken(sig_id):
         sig_id = f"{base_id}-{counter}"
         counter += 1
     return sig_id
@@ -150,10 +156,28 @@ def _save_corpus_repro(
         shutil.copy2(repro_file, target_html)
 
 
+def _load_corpus_drafts(corpus_path: Path) -> list[CrashSignature]:
+    """Drafts stored beside the reproducers of earlier runs as `<id>.json`."""
+    entries: list[CrashSignature] = []
+    for sidecar in sorted(corpus_path.glob("*.json")):
+        try:
+            entry = json.loads(sidecar.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if isinstance(entry, dict) and entry.get("id") == sidecar.stem and entry.get("message") and entry.get("source_file"):
+            entries.append(entry)
+    return entries
+
+
+def default_drafts_path(triage_dir: Path) -> Path:
+    return Path(triage_dir) / "draft-signatures.json"
+
+
 def sync_draft_signatures(
     triage_dir: Path,
     signatures_path: Path,
     corpus_out_dir: Optional[Path] = None,
+    drafts_path: Optional[Path] = None,
     reduce_binary: Optional[str | Path] = None,
     reduce_timeout: float = 2.0,
     servo_args: Optional[list[str]] = None,
@@ -162,21 +186,38 @@ def sync_draft_signatures(
     repo: str = "servo/servo",
     token: Optional[str] = None,
 ) -> list[CrashSignature]:
+    """Deduplicate the new crashes of a triage run into `drafts_path`.
+
+    The known signatures and the fixed history are only read: they are regenerated
+    from upstream issues by `sync-issues`, so a crash becomes known once its issue
+    is filed with the B-fuzzing label.
+
+    `drafts_path` describes this run only and is removed when the run has no new
+    panic. `corpus_out_dir` may be shared between runs: each reproducer `<id>.html`
+    has its draft beside it as `<id>.json`, so a panic seen before keeps its id and
+    a different panic never takes over an existing file.
+    """
     signatures_path = Path(signatures_path)
+    drafts_path = Path(drafts_path) if drafts_path else default_drafts_path(triage_dir)
     history_path = Path(fixed_history_path) if fixed_history_path else default_fixed_history_path(signatures_path)
     existing_sigs = load_signatures(signatures_path) if signatures_path.exists() else []
     fixed_sigs = load_signatures(history_path) if history_path.exists() else []
     new_crashes_dir = Path(triage_dir) / "new_crashes"
 
+    drafts_path.unlink(missing_ok=True)
     if not new_crashes_dir.is_dir():
         return []
 
     corpus_path = Path(corpus_out_dir).resolve() if corpus_out_dir else None
+    corpus_drafts: list[CrashSignature] = []
     if corpus_path:
         corpus_path.mkdir(parents=True, exist_ok=True)
+        corpus_drafts = _load_corpus_drafts(corpus_path)
+
+    def id_taken_in_corpus(sig_id: str) -> bool:
+        return corpus_path is not None and any((corpus_path / f"{sig_id}{ext}").exists() for ext in (".html", ".json"))
 
     added: list[CrashSignature] = []
-    history_updated = False
     seen_regressions: set[tuple[str, str]] = set()
     args = servo_args if servo_args is not None else ["-xfz", "--enable-experimental-web-platform-features"]
 
@@ -217,41 +258,32 @@ def sync_draft_signatures(
             if upstream:
                 issue_url = upstream["url"]
                 if upstream["state"] == "closed":
-                    sig_id = _unique_signature_id(draft, msg, src, existing_sigs + fixed_sigs)
-                    reg_entry: CrashSignature = {
-                        "id": sig_id,
-                        "message": msg,
-                        "source_file": src,
-                        "stack_frames": draft.get("stack_frames") or ["main"],
-                        "issue": issue_url,
-                    }
-                    fixed_sigs.append(reg_entry)
-                    history_updated = True
-                    seen_regressions.add((normalize_panic_message(msg), src))
-                    print(f"[REGRESSION] Matched closed upstream issue {issue_url} -> archived as {sig_id}")
-                    if corpus_path:
-                        _save_corpus_repro(crash_dir, corpus_path, reg_entry, reduce_binary, reduce_timeout, args)
-                    continue
-                print(f"[DEDUP] Linked panic to existing open upstream issue: {issue_url}")
+                    print(f"[REGRESSION] Panic matches closed upstream issue: {issue_url}")
+                else:
+                    print(f"[DEDUP] Linked panic to existing open upstream issue: {issue_url}")
 
-        sig_id = _unique_signature_id(draft, msg, src, existing_sigs + fixed_sigs)
+        earlier = find_matching_signature_entry(msg, src, corpus_drafts)
+        if earlier:
+            sig_id = earlier["id"]
+        else:
+            sig_id = _unique_signature_id(draft, msg, src, existing_sigs + fixed_sigs, id_taken_in_corpus)
         new_entry: CrashSignature = {
             "id": sig_id,
             "message": msg,
             "source_file": src,
-            "stack_frames": draft.get("stack_frames") or ["main"],
+            "stack_frames": draft.get("stack_frames") or [],
             "issue": issue_url,
         }
         existing_sigs.append(new_entry)
         added.append(new_entry)
-        print(f"Added new panic signature: {sig_id} ({src}) -> {issue_url}")
+        print(f"New panic signature draft: {sig_id} ({src}) -> {issue_url}")
 
         if corpus_path:
             _save_corpus_repro(crash_dir, corpus_path, new_entry, reduce_binary, reduce_timeout, args)
+            (corpus_path / f"{sig_id}.json").write_text(json.dumps(new_entry, indent=2) + "\n", encoding="utf-8")
 
     if added:
-        save_signatures(signatures_path, existing_sigs)
-    if history_updated:
-        save_signatures(history_path, fixed_sigs)
+        save_signatures(drafts_path, added)
+        print(f"Wrote {len(added)} draft signature(s) to {drafts_path}")
 
     return added

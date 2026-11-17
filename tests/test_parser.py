@@ -52,6 +52,88 @@ stack backtrace:
         self.assertEqual(crash.line, 950)
         self.assertIn("<script::dom::servoparser::ParserContext>::initialize_document_object", crash.stack_frames)
 
+    def test_css_warning_before_panic_is_not_the_panic(self):
+        sample_output = """
+    40:325 Unsupported property declaration: '-webkit-border-image: repeating-radial-gradient(at center 10em center 28em,rgb(182,37,37)) 16% 1 10% 54 fill / 1 0 1 42517;', OtherInvalidValue
+[2026-11-17T05:13:36Z WARN  servoshell::panic_hook] Panic hook called.
+internal error: entered unreachable code: Found hoisted box with missing or non-BoxFragment. (thread Script#1, at components/layout/display_list/stacking_context.rs:633)
+   0: servoshell::backtrace::print
+   1: servoshell::panic_hook::panic_hook
+   2: <layout::fragment_tree::fragment::Fragment>::build_stacking_context_tree
+"""
+        info = parse_crash(sample_output)
+        self.assertIsNotNone(info)
+        self.assertEqual(
+            info.message,
+            "internal error: entered unreachable code: Found hoisted box with missing or non-BoxFragment.",
+        )
+        self.assertEqual(info.source_file, "components/layout/display_list/stacking_context.rs")
+        self.assertEqual(info.thread, "Script#1")
+        self.assertEqual(info.line, 633)
+
+    def test_panic_without_rust_path_is_found_after_hook_marker(self):
+        sample_output = """
+    1:10 Unsupported property declaration: 'background: radial-gradient(at top left, red, blue)', OtherInvalidValue
+[2026-11-17T05:13:36Z WARN  servoshell::panic_hook] Panic hook called.
+index out of bounds (thread Script#2, at <unknown>)
+   0: servoshell::backtrace::print
+   1: servoshell::panic_hook::panic_hook
+"""
+        info = parse_crash(sample_output)
+        self.assertIsNotNone(info)
+        self.assertEqual(info.message, "index out of bounds")
+        self.assertEqual(info.thread, "Script#2")
+
+    def test_css_warning_alone_is_not_a_crash(self):
+        sample_output = (
+            "    1:10 Unsupported property declaration: "
+            "'background: radial-gradient(at top left, red, blue)', OtherInvalidValue\n"
+        )
+        self.assertIsNone(parse_crash(sample_output))
+
+    def test_assert_eq_message_is_the_assertion_line(self):
+        output = (
+            "assertion `left == right` failed: Vector length 1 should be a multiple of cols = 0\n"
+            "  left: 0\n"
+            " right: 1 (thread Script(1,1), at /home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/grid-0.15.0/src/lib.rs:481)\n"
+        )
+        crash = parse_crash(output)
+        self.assertEqual(
+            crash.message,
+            "assertion `left == right` failed: Vector length 1 should be a multiple of cols = 0",
+        )
+        self.assertEqual(crash.source_file, "grid-0.15.0/src/lib.rs")
+
+    def test_wrapped_assert_condition_is_joined(self):
+        output = (
+            "Panic hook called.\n"
+            "assertion failed: self.inclusive_ancestors(shadow_including).any(|ancestor|\n"
+            "        &*ancestor == common_ancestor) (thread Script#1, at components/script/dom/node/node.rs:3318)\n"
+        )
+        crash = parse_crash(output)
+        self.assertEqual(
+            crash.message,
+            "assertion failed: self.inclusive_ancestors(shadow_including).any(|ancestor| &*ancestor == common_ancestor)",
+        )
+
+    def test_normalize_git_and_toolchain_paths(self):
+        self.assertEqual(
+            normalize_source_path(
+                "/home/runner/.cargo/git/checkouts/webrender-a8b399ecb6c2da85/8846253/webrender/src/hit_test.rs:449"
+            ),
+            "webrender/src/hit_test.rs",
+        )
+        self.assertEqual(
+            normalize_source_path(
+                "/home/runner/.rustup/toolchains/1.89.0-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/num/f32.rs:1405"
+            ),
+            "library/core/src/num/f32.rs",
+        )
+        self.assertEqual(
+            normalize_source_path("/rustc/59807616e1fa2540724bfbac14d7976d7e4a3860/library/alloc/src/boxed.rs:2254:9"),
+            "library/alloc/src/boxed.rs",
+        )
+
     def test_parse_condensed_backtrace(self):
         sample_condensed = (
             "assertion failed: parent_proxy.currently_active().is_some() (thread Script#4, at components/script/dom/window/windowproxy.rs:950) "

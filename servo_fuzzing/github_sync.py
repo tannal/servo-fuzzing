@@ -4,22 +4,17 @@ import json
 import os
 import re
 import urllib.request
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
 from urllib.parse import urlencode
 
 from .parser import (
-    extract_stack_frames,
     normalize_panic_message,
     normalize_source_path,
     parse_crash,
 )
-from .signatures import (
-    CrashSignature,
-    find_signature_by_issue,
-    load_signatures,
-    save_signatures,
-)
+from .signatures import CrashSignature, save_signatures
 
 
 def _github_headers(token: Optional[str] = None, user_agent: str = "servo-fuzzing-sync") -> dict[str, str]:
@@ -83,201 +78,161 @@ def fetch_fuzzing_issues(
         page += 1
 
 
-def fetch_open_fuzzing_issues(
-    repo: str = "servo/servo",
-    token: Optional[str] = None,
-    per_page: int = 100,
-) -> list[dict[str, Any]]:
-    return fetch_fuzzing_issues(repo=repo, state="open", token=token, per_page=per_page)
+RUNTIME_FRAME_PREFIXES = (
+    "std::",
+    "core::",
+    "alloc::",
+    "rust_begin_unwind",
+    "rust_panic",
+    "__rust",
+    "servoshell::",
+    "servo_constellation::logging::",
+    "log::",
+    "unknown>",
+    "start_thread",
+    "clone",
+    "__libc",
+)
+
+MAX_SIGNATURE_FRAMES = 2
+
+
+CLOSURE_SUFFIX = re.compile(r"::(?:\{\{closure\}\}|\{closure#\d+\})$")
+
+
+def _strip_build_specific_suffix(frame: str) -> str:
+    """Drop trailing closure markers and generic arguments from a frame.
+
+    Whether these are printed depends on symbol mangling and inlining. Frames are
+    matched as substrings, so the shortened frame fits either form.
+    """
+    while True:
+        shortened = CLOSURE_SUFFIX.sub("", frame)
+        if shortened.endswith(">"):
+            depth = 0
+            for index in range(len(shortened) - 1, -1, -1):
+                depth += {">": 1, "<": -1}.get(shortened[index], 0)
+                if depth == 0:
+                    if shortened[index - 2:index] == "::" and index > 2:
+                        shortened = shortened[:index - 2]
+                    break
+        if shortened == frame:
+            return frame
+        frame = shortened
+
+
+def _select_signature_frames(frames: list[str]) -> list[str]:
+    """Keep the innermost frames that belong to the crashing code, not to panic plumbing."""
+    selected: list[str] = []
+    for frame in frames:
+        if "panic_hook" in frame or re.sub(r"^(?:<|&mut |&)+", "", frame).startswith(RUNTIME_FRAME_PREFIXES):
+            continue
+        frame = _strip_build_specific_suffix(frame)
+        # A recursive function must not require the same recursion depth to match.
+        if frame not in selected:
+            selected.append(frame)
+    return selected[:MAX_SIGNATURE_FRAMES]
 
 
 def parse_issue_to_signature(issue_data: dict[str, Any]) -> Optional[CrashSignature]:
+    """Turn a B-fuzzing issue into a signature, or None when it states no panic location.
+
+    `stack_frames` is empty when the issue has no backtrace; such a signature matches
+    on message and source file alone.
+    """
     title = issue_data.get("title", "")
     body = issue_data.get("body", "") or ""
     body = re.sub(r"(?m)^\s*[│┃] ?", "", body)
-    issue_url = issue_data.get("html_url", "")
     issue_number = issue_data.get("number")
 
     crash = parse_crash(body) or (parse_crash(title) if title else None)
-
-    if crash is None:
-        m = re.search(r"(?:panic:\s*)?(.+?)\s*\((?:thread\s+[^,]+,\s*)?at\s+([^:]+)(?::\d+)?\)", title)
-        if m:
-            message = m.group(1).strip()
-            source_file = normalize_source_path(m.group(2).strip())
-            frames = extract_stack_frames(body) or ["<script::dom>"]
-            crash_id = f"issue-{issue_number}" if issue_number else "fuzzing-issue"
-            return {
-                "id": crash_id,
-                "message": message,
-                "source_file": source_file,
-                "stack_frames": frames,
-                "issue": issue_url,
-            }
+    if crash is None or crash.source_file == "<signal>":
         return None
 
-    selected_frames = [
-        f for f in crash.stack_frames
-        if "servoshell::" not in f and "panic_hook" not in f
-    ][:2]
-    if not selected_frames:
-        selected_frames = [crash.source_file]
-
-    sig_id = f"issue-{issue_number}" if issue_number else f"sig-{Path(crash.source_file).stem}"
     return {
-        "id": sig_id,
+        "id": f"issue-{issue_number}",
         "message": crash.message,
         "source_file": crash.source_file,
-        "stack_frames": selected_frames,
-        "issue": issue_url,
+        "stack_frames": _select_signature_frames(crash.stack_frames),
+        "issue": issue_data.get("html_url", ""),
     }
+
+
+@dataclass
+class SyncResult:
+    open_signatures: list[CrashSignature] = field(default_factory=list)
+    closed_signatures: list[CrashSignature] = field(default_factory=list)
+    skipped: list[dict[str, Any]] = field(default_factory=list)
+
+    def to_markdown(self, repo: str) -> str:
+        lines = [
+            f"### B-fuzzing sync from `{repo}`",
+            "",
+            "| | Signatures |",
+            "|---|---|",
+            f"| Open issues -> `rust-panic.json` | {len(self.open_signatures)} |",
+            f"| Closed issues -> `fixed-history.json` | {len(self.closed_signatures)} |",
+            f"| Issues without a parseable panic location | {len(self.skipped)} |",
+        ]
+        if self.skipped:
+            lines += ["", "Skipped issues (ASAN reports, signals, debugger backtraces, tracking issues):", ""]
+            lines += [
+                f"- [#{issue['number']}]({issue['html_url']}) ({issue['state']}): {issue['title']}"
+                for issue in self.skipped
+            ]
+        return "\n".join(lines) + "\n"
+
+
+def _signatures_from_issues(issues: list[dict[str, Any]], result: SyncResult) -> list[CrashSignature]:
+    signatures: list[CrashSignature] = []
+    for issue in sorted(issues, key=lambda i: i["number"]):
+        sig = parse_issue_to_signature(issue)
+        if sig is None:
+            result.skipped.append({
+                "number": issue["number"],
+                "html_url": issue.get("html_url", ""),
+                "state": issue.get("state", ""),
+                "title": issue.get("title", ""),
+            })
+            continue
+        signatures.append(sig)
+    return signatures
 
 
 def sync_signatures_from_github(
     signatures_path: Path,
+    history_path: Path,
     repo: str = "servo/servo",
     token: Optional[str] = None,
     dry_run: bool = False,
-) -> tuple[int, int]:
-    signatures_path = Path(signatures_path)
-    existing_sigs: list[CrashSignature] = load_signatures(signatures_path) if signatures_path.exists() else []
+) -> SyncResult:
+    """Regenerate both signature files from the B-fuzzing issues of `repo`.
 
-    print(f"Fetching open B-fuzzing issues from {repo}...")
-    issues = fetch_open_fuzzing_issues(repo=repo, token=token)
-    print(f"Retrieved {len(issues)} open B-fuzzing issues.")
+    Open issues become `signatures_path`, closed ones `history_path`. Nothing from the
+    previous files is kept, so a signature follows its issue when it is edited, closed
+    or reopened. Both files are written only after every request succeeded.
+    """
+    print(f"Fetching B-fuzzing issues from {repo}...")
+    open_issues = fetch_fuzzing_issues(repo=repo, state="open", token=token)
+    closed_issues = fetch_fuzzing_issues(repo=repo, state="closed", token=token)
+    print(f"Retrieved {len(open_issues)} open and {len(closed_issues)} closed B-fuzzing issues.")
+    if not open_issues and not closed_issues:
+        raise ValueError(f"No B-fuzzing issues found in {repo}; refusing to empty the signature files")
 
-    added = 0
-    existing = 0
+    result = SyncResult()
+    result.open_signatures = _signatures_from_issues(open_issues, result)
+    result.closed_signatures = _signatures_from_issues(closed_issues, result)
 
-    for issue in issues:
-        issue_url = issue.get("html_url", "")
-        if find_signature_by_issue(existing_sigs, issue_url):
-            existing += 1
-            continue
-
-        sig = parse_issue_to_signature(issue)
-        if sig:
-            base_id = sig["id"]
-            counter = 1
-            while any(s["id"] == sig["id"] for s in existing_sigs):
-                sig["id"] = f"{base_id}-{counter}"
-                counter += 1
-
-            existing_sigs.append(sig)
-            added += 1
-            print(f"  + Added signature: {sig['id']} -> {sig['issue']} ({sig['message']})")
-        else:
-            print(f"  Skipped {issue_url}: no parseable panic signature")
-
-    if added > 0 and not dry_run:
-        save_signatures(signatures_path, existing_sigs)
-        print(f"Saved {len(existing_sigs)} signatures to {signatures_path}.")
-    elif dry_run:
-        print(f"[Dry Run] Would have added {added} signatures.")
-
-    return added, existing
-
-
-def check_and_prune_closed_issues(
-    signatures_path: Path,
-    archive_path: Path,
-    token: Optional[str] = None,
-    dry_run: bool = False,
-) -> list[CrashSignature]:
-    signatures_path = Path(signatures_path)
-    archive_path = Path(archive_path)
-
-    if not signatures_path.exists():
-        return []
-
-    sigs = load_signatures(signatures_path)
-    archived: list[CrashSignature] = load_signatures(archive_path) if archive_path.exists() else []
-
-    auth_token = token or os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
-    headers = {
-        "Accept": "application/vnd.github.v3+json",
-        "User-Agent": "servo-fuzzing-prune",
-    }
-    if auth_token:
-        headers["Authorization"] = f"Bearer {auth_token}"
-
-    active_sigs: list[CrashSignature] = []
-    pruned: list[CrashSignature] = []
-
-    print(f"Checking {len(sigs)} signatures against upstream issue status...")
-    for sig in sigs:
-        m = re.search(r"/issues/(\d+)$", sig["issue"])
-        if not m:
-            active_sigs.append(sig)
-            continue
-
-        issue_num = m.group(1)
-        api_url = f"https://api.github.com/repos/servo/servo/issues/{issue_num}"
-        req = urllib.request.Request(api_url, headers=headers)
-
-        try:
-            with urllib.request.urlopen(req) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-                if data.get("state", "open") == "closed":
-                    print(f"  Issue #{issue_num} is CLOSED (Fixed upstream). Moving '{sig['id']}' to archive.")
-                    pruned.append(sig)
-                    archived.append(sig)
-                else:
-                    active_sigs.append(sig)
-        except Exception as exc:
-            print(f"  Warning: Could not check issue #{issue_num}: {exc}")
-            active_sigs.append(sig)
-
-    if pruned and not dry_run:
-        save_signatures(signatures_path, active_sigs)
-        save_signatures(archive_path, archived)
-        print(f"Pruned {len(pruned)} fixed signatures from {signatures_path} (saved to {archive_path}).")
-    elif dry_run and pruned:
-        print(f"[Dry Run] Would have pruned {len(pruned)} signatures: {[s['id'] for s in pruned]}")
-
-    return pruned
-
-
-def sync_closed_history_from_github(
-    archive_path: Path,
-    repo: str = "servo/servo",
-    token: Optional[str] = None,
-    dry_run: bool = False,
-) -> tuple[int, int]:
-    archive_path = Path(archive_path)
-    archived: list[CrashSignature] = load_signatures(archive_path) if archive_path.exists() else []
-
-    print(f"Fetching closed B-fuzzing issues from {repo}...")
-    issues = fetch_fuzzing_issues(repo=repo, state="closed", token=token)
-    print(f"Retrieved {len(issues)} closed B-fuzzing issues.")
-
-    added = 0
-    existing = 0
-
-    for issue in issues:
-        issue_url = issue.get("html_url", "")
-        if find_signature_by_issue(archived, issue_url):
-            existing += 1
-            continue
-
-        sig = parse_issue_to_signature(issue)
-        if sig:
-            base_id = sig["id"]
-            counter = 1
-            while any(s["id"] == sig["id"] for s in archived):
-                sig["id"] = f"{base_id}-{counter}"
-                counter += 1
-            archived.append(sig)
-            added += 1
-            print(f"  + Archived closed signature: {sig['id']} -> {sig['issue']} ({sig['message']})")
-
-    if added > 0 and not dry_run:
-        save_signatures(archive_path, archived)
-        print(f"Saved {len(archived)} historical signatures to {archive_path}.")
-    elif dry_run:
-        print(f"[Dry Run] Would have archived {added} closed signatures.")
-
-    return added, existing
+    if dry_run:
+        print("[Dry Run] Signature files left unchanged.")
+    else:
+        save_signatures(Path(signatures_path), result.open_signatures)
+        save_signatures(Path(history_path), result.closed_signatures)
+        print(f"Wrote {len(result.open_signatures)} signatures to {signatures_path}.")
+        print(f"Wrote {len(result.closed_signatures)} signatures to {history_path}.")
+    for issue in result.skipped:
+        print(f"  skipped #{issue['number']} ({issue['state']}): {issue['title']}")
+    return result
 
 
 def _build_issue_search_phrase(message: str, source_file: str) -> str:

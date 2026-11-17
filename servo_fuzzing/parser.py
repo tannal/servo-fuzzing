@@ -25,7 +25,10 @@ class CrashInfo:
 def normalize_source_path(path_str: str) -> str:
     clean = re.sub(r":\d+(?::\d+)?$", "", path_str.strip())
 
-    m = re.search(r"/(?:git/checkouts|checkouts)/[^/]+/[^/]+/((?:style|components|ports|tests)/.+\.rs)", clean)
+    m = re.search(r"/(?:git/checkouts|checkouts)/[^/]+/[^/]+/(.+\.rs)", clean)
+    if m:
+        return m.group(1)
+    m = re.search(r"(?:/rustc/[0-9a-f]+|/lib/rustlib/src/rust)/(library/.+\.rs)", clean)
     if m:
         return m.group(1)
     m = re.search(r"stylo-[^/]+/[^/]+/((?:style|components)/.+\.rs)", clean)
@@ -160,6 +163,40 @@ def extract_stack_frames(output: str) -> list[str]:
     return frames
 
 
+ASSERT_OPERANDS_PATTERN = re.compile(
+    r"(?P<head>assertion `[^`\n]+` failed[^\n]*)\n\s*left: [^\n]*\n\s*(?P<last>right: [^\n]*)"
+)
+MAX_MESSAGE_CONTINUATION_LINES = 5
+
+
+def _unclosed_brackets(text: str) -> int:
+    return sum(text.count(c) for c in ")]}") - sum(text.count(c) for c in "([{")
+
+
+def _full_panic_message(message: str, output: str) -> str:
+    """Recover the start of a panic message that spans several lines.
+
+    The panic hook prints the location after the last line, so `message` is only that
+    last line: ` right: <value>` for `assert_eq!`, or the tail of an `assert!`
+    condition that rustfmt wrapped.
+    """
+    if message.lstrip().startswith("right: "):
+        for m in ASSERT_OPERANDS_PATTERN.finditer(output):
+            if m.group("last").startswith(message.strip()):
+                return m.group("head")
+        return message
+
+    position = output.find(message)
+    if position == -1 or _unclosed_brackets(message) <= 0:
+        return message
+    joined = message.strip()
+    for line in reversed(output[:position].splitlines()[-MAX_MESSAGE_CONTINUATION_LINES:]):
+        joined = f"{line.strip()} {joined}"
+        if _unclosed_brackets(joined) <= 0:
+            return joined
+    return message
+
+
 def _make_crash_info(
     message: str,
     path_str: str,
@@ -168,6 +205,7 @@ def _make_crash_info(
     line: Optional[str] = None,
     col: Optional[str] = None,
 ) -> CrashInfo:
+    message = _full_panic_message(message, output)
     if message.startswith("panic: "):
         message = message[7:].strip()
     return CrashInfo(
@@ -182,22 +220,50 @@ def _make_crash_info(
     )
 
 
+PANIC_HOOK_MARKER = "Panic hook called."
+PANIC_MESSAGE_KEYWORDS = ("panic", "assertion failed", "called `", "unwrap()", "entered unreachable code")
+
+
+def _find_panic_hook_match(output: str) -> Optional[re.Match]:
+    """Pick the panic line among every `message (at location)` line in the output.
+
+    Page output such as CSS warnings (`gradient(at center 10em ...)`) has the same
+    shape, so a line naming a Rust source file or panic wording wins over the rest,
+    and lines printed before the panic hook ran are only a last resort.
+    """
+    matches = list(PANIC_HOOK_PATTERN.finditer(output))
+    marker = output.find(PANIC_HOOK_MARKER)
+    after_hook = [m for m in matches if m.start() >= marker] if marker != -1 else []
+
+    def looks_like_panic(m: re.Match) -> bool:
+        return ".rs" in m.group("path") or any(k in m.group("message").lower() for k in PANIC_MESSAGE_KEYWORDS)
+
+    for candidates in (after_hook, matches):
+        for m in candidates:
+            if looks_like_panic(m):
+                return m
+    if "panic_hook" not in output:
+        return None
+    for candidates in (after_hook, matches):
+        if candidates:
+            return candidates[0]
+    return None
+
+
 def parse_crash(output: str) -> Optional[CrashInfo]:
     if not output:
         return None
 
-    for m in PANIC_HOOK_PATTERN.finditer(output):
-        path_str = m.group("path")
-        msg = m.group("message")
-        if ".rs" in path_str or any(k in msg.lower() for k in ("panic", "assertion failed", "called `", "unwrap()", "entered unreachable code")) or "panic_hook" in output:
-            return _make_crash_info(
-                message=msg,
-                path_str=path_str,
-                output=output,
-                thread=m.group("thread"),
-                line=m.group("line"),
-                col=m.group("col"),
-            )
+    m = _find_panic_hook_match(output)
+    if m:
+        return _make_crash_info(
+            message=m.group("message"),
+            path_str=m.group("path"),
+            output=output,
+            thread=m.group("thread"),
+            line=m.group("line"),
+            col=m.group("col"),
+        )
 
     std_match = STD_PANIC_PATTERN.search(output)
     if std_match:

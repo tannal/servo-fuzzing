@@ -148,9 +148,11 @@ class TestImporter(unittest.TestCase):
             # Only 1 unique signature should be added due to deduplication
             self.assertEqual(summary["signatures_added"], 1)
 
-            saved_sigs = json.loads(sig_path.read_text(encoding="utf-8"))["signatures"]
-            self.assertEqual(len(saved_sigs), 1)
-            sig_id = saved_sigs[0]["id"]
+            # The draft is written next to the triage output; the known signatures stay untouched
+            self.assertEqual(json.loads(sig_path.read_text(encoding="utf-8"))["signatures"], [])
+            drafts = json.loads((output_dir / "draft-signatures.json").read_text(encoding="utf-8"))["signatures"]
+            self.assertEqual(len(drafts), 1)
+            sig_id = drafts[0]["id"]
             self.assertTrue((corpus_dir / f"{sig_id}.html").exists())
 
             # Report should only have 1 unique crash row, and unpacked_raw should not pollute output_dir
@@ -159,6 +161,54 @@ class TestImporter(unittest.TestCase):
             self.assertFalse((output_dir / "unpacked_raw").exists())
             new_crash_dirs = list((output_dir / "new_crashes").iterdir())
             self.assertEqual(len(new_crash_dirs), 1)
+
+    @patch("servo_fuzzing.importer.run_single_test")
+    @patch("servo_fuzzing.importer.run_suite")
+    def test_passing_import_removes_drafts_of_an_earlier_import(self, mock_run_suite, mock_run_single):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            crashes_dir = tmp_path / "raw"
+            crashes_dir.mkdir()
+            case = crashes_dir / "case.html"
+            case.write_text("<p>", encoding="utf-8")
+            sig_path = tmp_path / "signatures.json"
+            sig_path.write_text('{"schema_version": 1, "signatures": []}', encoding="utf-8")
+            fake_bin = tmp_path / "servoshell"
+            fake_bin.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+            fake_bin.chmod(0o755)
+            mock_run_single.return_value = TestResult(testcase=Path("about:blank"), status=TestStatus.PASS, duration=0.1)
+
+            crash = TestResult(
+                testcase=case,
+                status=TestStatus.NEW_CRASH,
+                duration=0.1,
+                combined_output="assertion failed: foo (thread Script#1, at components/bar.rs:10)",
+                crash_info=CrashInfo(message="assertion failed: foo", source_file="components/bar.rs:10", stack_frames=[]),
+            )
+            passing = TestResult(testcase=case, status=TestStatus.PASS, duration=0.1)
+
+            for drafts_arg in (None, tmp_path / "drafts.json"):
+                drafts = drafts_arg or tmp_path / "triage" / "draft-signatures.json"
+                for result, expect_drafts in ((crash, True), (passing, False)):
+                    crashed = result is crash
+                    mock_run_suite.return_value = SuiteSummary(
+                        total=1,
+                        passed=0 if crashed else 1,
+                        known_crashes=0,
+                        new_crashes=1 if crashed else 0,
+                        timeouts=0,
+                        errors=0,
+                        results=[result],
+                    )
+                    import_crashes(
+                        source=crashes_dir,
+                        binary=fake_bin,
+                        signatures_path=sig_path,
+                        output_dir=tmp_path / "triage",
+                        drafts_path=drafts_arg,
+                        reduce=False,
+                    )
+                    self.assertEqual(drafts.exists(), expect_drafts)
 
     def test_cli_import_help_and_execution(self):
         with tempfile.TemporaryDirectory() as tmp_dir:

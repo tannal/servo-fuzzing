@@ -1,7 +1,4 @@
 {
-  "test_dirs": [
-    "testcases"
-  ],
   "test_extensions": [
     ".html",
     ".htm"

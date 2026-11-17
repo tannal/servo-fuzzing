@@ -8,7 +8,6 @@ servo-x86_64-linux-gnu.tar.gz
 servo/
 target/
 *.tar.gz
-testcases/bundle/
 *.pyc
 __pycache__/
 *.egg-info/
