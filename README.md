@@ -335,6 +335,22 @@ resources not saved in the original report cannot be recovered by this tool.
 Latest bundles now refresh on each run. A valid cached archive remains a warned
 offline fallback if refreshing fails. Local bundle paths do not download.
 
+### Timed-out testcases in bundles
+
+`bundle pack` drops testcases that time out by default. A replay never fails on
+a timeout, so keeping them only costs time, and a looping testcase still gets a
+chance to crash before the threshold:
+
+```sh
+servo-fuzzing bundle pack --source target/generated --from-triage target/triage \
+  --timeouts include --max-timeout-tests 50
+```
+
+`--max-timeout-tests` (default 50) bounds that cost; the kept timeouts count
+towards `--max-tests`. The weekly campaign reads the `BUNDLE_TIMEOUTS`
+repository variable (`exclude` or `include`), which a manual run can override
+with the `bundle_timeouts` input.
+
 
 ## License
 
