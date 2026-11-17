@@ -20,7 +20,7 @@ from .evidence import (
     version_sha,
     write_evidence_pack,
 )
-from .executor import run_single_test
+from .executor import TestResult, TestStatus, run_single_test
 from .generators import GeneratorManager
 from .github_sync import (
     check_and_prune_closed_issues,
@@ -227,11 +227,16 @@ def cmd_report(args: argparse.Namespace) -> int:
         return 1
     servo_args = shlex.split(args.servo_args)
 
-    crashing = []
+    def crash_site(result: TestResult) -> Optional[tuple]:
+        info = result.crash_info
+        return (info.message, info.source_file, info.line) if info else None
+
+    crashing: list[TestResult] = []
     for attempt in range(1, args.attempts + 1):
         print(f"[{attempt}/{args.attempts}] Running {testcase} on {binary}...")
         res = run_single_test(binary=binary, testcase=testcase, servo_args=servo_args, timeout=args.timeout)
-        if res.crash_info and (not crashing or res.crash_info.message == crashing[0].crash_info.message):
+        crashed = res.crash_info is not None or res.status == TestStatus.NEW_CRASH
+        if crashed and (not crashing or crash_site(res) == crash_site(crashing[0])):
             crashing.append(res)
     if not crashing:
         print(f"Error: no crash in {args.attempts} run(s); nothing to report.")
@@ -253,7 +258,7 @@ def cmd_report(args: argparse.Namespace) -> int:
         try:
             evidence.bisect, _ = run_bisect(
                 testcase=testcase,
-                pattern=re.escape(crash.message),
+                pattern=re.escape(crash.message) if crash else None,
                 good=args.good,
                 bad=args.bad,
                 attempts=args.attempts,
@@ -267,7 +272,7 @@ def cmd_report(args: argparse.Namespace) -> int:
             print(f"Warning: bisect failed, report has no regression range: {exc}")
 
     source_ref = version_sha(evidence.servo_version)
-    if source_ref:
+    if crash and source_ref:
         try:
             evidence.snippet = fetch_source_snippet(crash, source_ref, fetch_text)
         except Exception as exc:
@@ -281,8 +286,9 @@ def cmd_report(args: argparse.Namespace) -> int:
     print("\n" + "=" * 60)
     print(draft)
     print("=" * 60)
-    print("Signature draft for signatures/rust-panic.json:")
-    print(json.dumps(make_signature_draft(crash), indent=2))
+    if crash:
+        print("Signature draft for signatures/rust-panic.json:")
+        print(json.dumps(make_signature_draft(crash), indent=2))
 
     if args.output:
         Path(args.output).write_text(draft, encoding="utf-8")
