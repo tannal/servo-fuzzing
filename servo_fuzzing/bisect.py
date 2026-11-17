@@ -134,7 +134,7 @@ def reproduces(
             detail = result.error_message or (result.combined_output or "").strip()[-500:]
             raise ValueError(f"Failed to launch {binary}: {detail}")
         if regex is None:
-            if result.crash_info is not None:
+            if result.crash_info is not None or result.status == TestStatus.NEW_CRASH:
                 return True
         elif regex.search(result.combined_output or (result.stdout + result.stderr)):
             return True
