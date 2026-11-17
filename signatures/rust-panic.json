@@ -2,40 +2,82 @@
   "schema_version": 1,
   "signatures": [
     {
-      "id": "windowproxy-parent-active",
-      "message": "assertion failed: parent_proxy.currently_active().is_some()",
-      "source_file": "components/script/dom/window/windowproxy.rs",
-      "stack_frames": [
-        "<script::dom::servoparser::ParserContext>::initialize_document_object"
-      ],
-      "issue": "https://github.com/servo/servo/issues/49411"
+      "id": "issue-36700",
+      "message": "assertion failed: !self.loader.borrow().events_inhibited()",
+      "source_file": "components/script/dom/document.rs",
+      "stack_frames": [],
+      "issue": "https://github.com/servo/servo/issues/36700"
     },
     {
-      "id": "euclid-size-unwrap-none",
+      "id": "issue-44574",
+      "message": "assertion failed: JS_IsExceptionPending(*cx)",
+      "source_file": "components/script/dom/bindings/error.rs",
+      "stack_frames": [
+        "script::dom::bindings::error::throw_dom_exception",
+        "script_bindings::codegen::GenericBindings::TrustedTypePolicyBinding::TrustedTypePolicy_Binding::createScriptURL"
+      ],
+      "issue": "https://github.com/servo/servo/issues/44574"
+    },
+    {
+      "id": "issue-46202",
       "message": "called `Option::unwrap()` on a `None` value",
       "source_file": "euclid-0.22.14/src/size.rs",
       "stack_frames": [
-        "euclid::size"
+        "webrender::quad::prepare_indirect_pattern",
+        "webrender::quad::prepare_border_image_nine_patch"
       ],
       "issue": "https://github.com/servo/servo/issues/46202"
     },
     {
-      "id": "tiny-skia-alpha-run-unwrap-none",
+      "id": "issue-46252",
+      "message": "assertion failed: distance_to_stack_bottom <= max_allowable_distance",
+      "source_file": "style/context.rs",
+      "stack_frames": [],
+      "issue": "https://github.com/servo/servo/issues/46252"
+    },
+    {
+      "id": "issue-46338",
       "message": "called `Option::unwrap()` on a `None` value",
-      "source_file": "tiny-skia-path-0.12.0/src/alpha_run.rs",
+      "source_file": "tiny-skia-path-0.12.0/src/rect.rs",
       "stack_frames": [
-        "tiny_skia_path"
+        "tiny_skia_path::rect::NonZeroRect::to_int_rect",
+        "resvg::render::render_group"
+      ],
+      "issue": "https://github.com/servo/servo/issues/46338"
+    },
+    {
+      "id": "issue-47335",
+      "message": "called `Option::unwrap()` on a `None` value",
+      "source_file": "tiny-skia-0.12.0/src/alpha_runs.rs",
+      "stack_frames": [
+        "<tiny_skia::alpha_runs::AlphaRuns>::break_run",
+        "<tiny_skia::scan::path_aa::SuperBlitter as tiny_skia::blitter::Blitter>::blit_h"
       ],
       "issue": "https://github.com/servo/servo/issues/47335"
     },
     {
-      "id": "tiny-skia-rect-unwrap-none",
-      "message": "called `Option::unwrap()` on a `None` value",
-      "source_file": "tiny-skia-path-0.12.0/src/rect.rs",
+      "id": "issue-49290",
+      "message": "NaN should be between 0 and 1",
+      "source_file": "webrender_api-0.70.0/src/color.rs",
+      "stack_frames": [],
+      "issue": "https://github.com/servo/servo/issues/49290"
+    },
+    {
+      "id": "issue-49411",
+      "message": "assertion failed: parent_proxy.currently_active().is_some()",
+      "source_file": "components/script/dom/window/windowproxy.rs",
       "stack_frames": [
-        "tiny_skia_path"
+        "<script::dom::servoparser::ParserContext>::initialize_document_object",
+        "<script::dom::servoparser::ParserContext>::load_document"
       ],
-      "issue": "https://github.com/servo/servo/issues/46338"
+      "issue": "https://github.com/servo/servo/issues/49411"
+    },
+    {
+      "id": "issue-49527",
+      "message": "LengthPercentage not found",
+      "source_file": "style/servo/attr.rs",
+      "stack_frames": [],
+      "issue": "https://github.com/servo/servo/issues/49527"
     }
   ]
 }

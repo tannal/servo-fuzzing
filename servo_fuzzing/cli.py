@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from .bisect import DEFAULT_ASSET, DEFAULT_NIGHTLY_REPO, format_bisect_report, run_bisect
-from .bundle import download_bundle, pack_bundle, unpack_bundle
+from .bundle import DEFAULT_MAX_TIMEOUT_TESTS, download_bundle, pack_bundle, unpack_bundle
 from .evidence import (
     ANALYSIS_FILE,
     Evidence,
@@ -23,8 +23,6 @@ from .evidence import (
 from .executor import TestResult, TestStatus, run_single_test
 from .generators import GeneratorManager
 from .github_sync import (
-    check_and_prune_closed_issues,
-    sync_closed_history_from_github,
     sync_signatures_from_github,
 )
 from .reducer import reduce_delta_lines, reduce_with_lithium
@@ -336,21 +334,18 @@ def cmd_add_signature(args: argparse.Namespace) -> int:
 
 
 def cmd_sync_issues(args: argparse.Namespace) -> int:
-    added, existing = sync_signatures_from_github(
+    result = sync_signatures_from_github(
         signatures_path=Path(args.signatures),
+        history_path=Path(args.history),
         repo=args.repo,
         token=args.token,
         dry_run=args.dry_run,
     )
-    print(f"\nSummary (open): {added} added, {existing} already present.")
-    if getattr(args, "include_closed", False):
-        hist_added, hist_existing = sync_closed_history_from_github(
-            archive_path=Path(args.history),
-            repo=args.repo,
-            token=args.token,
-            dry_run=args.dry_run,
-        )
-        print(f"Summary (closed history): {hist_added} added, {hist_existing} already present.")
+    summary = result.to_markdown(args.repo)
+    print("\n" + summary)
+    if args.summary:
+        with open(args.summary, "a", encoding="utf-8") as summary_file:
+            summary_file.write(summary)
     return 0
 
 
@@ -359,22 +354,12 @@ def cmd_sync_drafts(args: argparse.Namespace) -> int:
         triage_dir=Path(args.triage_dir),
         signatures_path=Path(args.signatures),
         corpus_out_dir=Path(args.corpus) if args.corpus else None,
+        drafts_path=Path(args.drafts) if args.drafts else None,
         reduce_binary=args.reduce_binary if getattr(args, "reduce_binary", None) else None,
         reduce_timeout=args.reduce_timeout if getattr(args, "reduce_timeout", None) else 2.0,
         lookup_github=getattr(args, "lookup_github", False),
     )
-    print(f"Added {len(added)} unique panic signature(s) to {args.signatures}")
-    return 0
-
-
-def cmd_prune_closed(args: argparse.Namespace) -> int:
-    pruned = check_and_prune_closed_issues(
-        signatures_path=Path(args.signatures),
-        archive_path=Path(args.archive),
-        token=args.token,
-        dry_run=args.dry_run,
-    )
-    print(f"\nSummary: {len(pruned)} closed/fixed issues pruned from active panic signatures.")
+    print(f"Found {len(added)} unique new panic signature(s) not in {args.signatures}")
     return 0
 
 
@@ -389,6 +374,8 @@ def cmd_bundle(args: argparse.Namespace) -> int:
             timeout=args.timeout,
             from_triage=Path(args.from_triage) if getattr(args, "from_triage", None) else None,
             jobs=getattr(args, "jobs", 4),
+            include_timeouts=args.timeouts == "include",
+            max_timeout_tests=args.max_timeout_tests,
         )
     elif args.action == "unpack":
         unpack_bundle(
@@ -428,6 +415,7 @@ def cmd_import(args: argparse.Namespace) -> int:
         signatures_path=Path(args.signatures),
         corpus_dir=Path(args.corpus) if args.corpus else None,
         output_dir=Path(args.output) if args.output else None,
+        drafts_path=Path(args.drafts) if args.drafts else None,
         timeout=args.timeout,
         concurrency=args.jobs,
         max_tests=args.max_tests,
@@ -469,7 +457,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     p_gen = subparsers.add_parser("generate", help="Generate test cases")
     p_gen.add_argument("--tool", choices=["domato", "freedom", "minerva"], help="Specific generator tool")
     p_gen.add_argument("-n", "--count", type=int, default=100, help="Test cases per tool (default: 100)")
-    p_gen.add_argument("-o", "--output", default="testcases", help="Output directory")
+    p_gen.add_argument("-o", "--output", default="target/generated", help="Output directory")
     p_gen.add_argument("--clone", action="store_true", help="Clone generator repos if not present")
     p_gen.add_argument("--status", action="store_true", help="Check installation status of generators")
     p_gen.set_defaults(func=cmd_generate)
@@ -547,26 +535,20 @@ def main(argv: Optional[list[str]] = None) -> int:
     p_add.add_argument("--stack-frame", action="append", help="Stack backtrace frame")
     p_add.set_defaults(func=cmd_add_signature)
 
-    p_sync = subparsers.add_parser("sync-issues", help="Sync B-fuzzing issues from GitHub")
-    p_sync.add_argument("--signatures", default="signatures/rust-panic.json", help="Path to rust-panic.json")
-    p_sync.add_argument("--history", default="signatures/fixed-history.json", help="Path to fixed-history.json")
-    p_sync.add_argument("--include-closed", action="store_true", help="Also sync closed B-fuzzing issues into fixed-history.json")
+    p_sync = subparsers.add_parser("sync-issues", help="Regenerate both signature files from upstream B-fuzzing issues")
+    p_sync.add_argument("--signatures", default="signatures/rust-panic.json", help="Output for open issues")
+    p_sync.add_argument("--history", default="signatures/fixed-history.json", help="Output for closed issues")
+    p_sync.add_argument("--summary", help="Append a Markdown summary to this file (e.g. $GITHUB_STEP_SUMMARY)")
     p_sync.add_argument("--repo", default="servo/servo", help="Target GitHub repo")
     p_sync.add_argument("--token", help="GitHub Personal Access Token")
     p_sync.add_argument("--dry-run", action="store_true", help="Print changes without modifying files")
     p_sync.set_defaults(func=cmd_sync_issues)
 
-    p_prune = subparsers.add_parser("prune-closed", help="Prune fixed/closed issues from rust-panic.json")
-    p_prune.add_argument("--signatures", default="signatures/rust-panic.json", help="Path to signatures file")
-    p_prune.add_argument("--archive", default="signatures/fixed-history.json", help="Path to fixed archive")
-    p_prune.add_argument("--token", help="GitHub Personal Access Token")
-    p_prune.add_argument("--dry-run", action="store_true", help="Print changes without modifying files")
-    p_prune.set_defaults(func=cmd_prune_closed)
-
     p_sync_drafts = subparsers.add_parser("sync-drafts", help="Deduplicate and append new draft signatures from triage")
     p_sync_drafts.add_argument("--triage-dir", required=True, help="Path to triage directory (e.g. target/triage)")
     p_sync_drafts.add_argument("--signatures", default="signatures/rust-panic.json", help="Path to signatures file")
-    p_sync_drafts.add_argument("--corpus", default=None, help="Optional directory to save deduplicated reproducer HTMLs (e.g. testcases/corpus)")
+    p_sync_drafts.add_argument("--drafts", default=None, help="Output file for the draft signatures (default: <triage-dir>/draft-signatures.json)")
+    p_sync_drafts.add_argument("--corpus", default=None, help="Optional directory to save deduplicated reproducer HTMLs (e.g. target/panic-corpus)")
     p_sync_drafts.add_argument("--reduce-binary", default=None, help="Optional binary to auto-reduce reproducers")
     p_sync_drafts.add_argument("--reduce-timeout", type=float, default=2.0, help="Per-run timeout during reduction")
     p_sync_drafts.add_argument("--lookup-github", action="store_true", help="Search servo/servo open and closed issues to link existing issues")
@@ -576,17 +558,29 @@ def main(argv: Optional[list[str]] = None) -> int:
     p_bundle_sub = p_bundle.add_subparsers(dest="action", help="Bundle action (pack, unpack, download)")
 
     p_b_pack = p_bundle_sub.add_parser("pack", help="Pack directory into bundle tarball")
-    p_b_pack.add_argument("--source", default="testcases", help="Source directory containing HTML testcases")
+    p_b_pack.add_argument("--source", default="target/generated", help="Source directory containing HTML testcases")
     p_b_pack.add_argument("--output", default="target/fuzz-bundle-latest.tar.gz", help="Output tarball path")
     p_b_pack.add_argument("--max-tests", type=int, default=300, help="Maximum tests to bundle")
-    p_b_pack.add_argument("--binary", help="Binary to filter out hanging/timing-out cases")
-    p_b_pack.add_argument("--timeout", type=float, default=2.0, help="Timeout threshold to discard hanging tests")
+    p_b_pack.add_argument("--binary", help="Binary to classify passing/timing-out cases")
+    p_b_pack.add_argument("--timeout", type=float, default=2.0, help="Timeout threshold that marks a test as hanging")
+    p_b_pack.add_argument(
+        "--timeouts",
+        choices=("exclude", "include"),
+        default="exclude",
+        help="Whether testcases that time out go into the bundle (default: exclude)",
+    )
+    p_b_pack.add_argument(
+        "--max-timeout-tests",
+        type=int,
+        default=DEFAULT_MAX_TIMEOUT_TESTS,
+        help="With --timeouts include: maximum timed-out testcases to bundle",
+    )
     p_b_pack.add_argument("--from-triage", help="Triage directory to reuse existing results")
     p_b_pack.add_argument("--jobs", "-j", type=int, default=4, help="Concurrency for filtering timeouts")
 
     p_b_unpack = p_bundle_sub.add_parser("unpack", help="Unpack bundle tarball into directory")
     p_b_unpack.add_argument("--bundle", required=True, help="Path to .tar.gz bundle")
-    p_b_unpack.add_argument("--target", default="testcases/bundle", help="Target directory")
+    p_b_unpack.add_argument("--target", default="target/bundle", help="Target directory")
     p_b_unpack.add_argument("--clean", action="store_true", help="Clean target directory before unpacking")
 
     p_b_dl = p_bundle_sub.add_parser("download", help="Download bundle tarball from URL")
@@ -604,7 +598,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     p_import.add_argument("source", help="Directory or archive (.tar.gz, .zip) containing crash suspects")
     p_import.add_argument("--binary", default="./servo/servoshell", help="Path to servoshell binary (default: ./servo/servoshell)")
     p_import.add_argument("--signatures", default="signatures/rust-panic.json", help="Path to signatures file")
-    p_import.add_argument("--corpus", default="testcases/corpus", help="Output directory for deduplicated minimized reproducers")
+    p_import.add_argument("--corpus", default="target/panic-corpus", help="Output directory for deduplicated minimized reproducers")
+    p_import.add_argument("--drafts", default=None, help="Output file for the draft signatures (default: <output>/draft-signatures.json)")
     p_import.add_argument("--output", default="target/triage", help="Triage output directory")
     p_import.add_argument("-j", "--jobs", type=int, default=4, help="Parallel worker threads")
     p_import.add_argument("--timeout", type=float, default=2.0, help="Per-test timeout in seconds")

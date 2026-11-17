@@ -53,7 +53,6 @@ jobs:
           servo-fuzzing sync-issues \
             --signatures signatures/rust-panic.json \
             --history signatures/fixed-history.json \
-            --include-closed \
             --repo servo/servo
 
       - name: Validate synchronized signatures
