@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from .bundle import download_bundle
-from .executor import run_single_test
+from .executor import TestStatus, run_single_test
 from .github_sync import _github_headers
 
 DEFAULT_NIGHTLY_REPO = "servo/servo-nightly-builds"
@@ -97,13 +97,19 @@ def _find_servoshell(root: Path) -> Path:
     raise FileNotFoundError(f"servoshell not found in {root}")
 
 
+def build_dir_for(nightly: Nightly, cache_dir: Path) -> Path:
+    owner_repo = "/".join(nightly.asset_url.split("/")[3:5])
+    asset = nightly.asset_url.rsplit("/", 1)[-1]
+    return cache_dir / owner_repo.replace("/", "_") / asset / nightly.tag
+
+
 def install_nightly(nightly: Nightly, cache_dir: Path, token: Optional[str] = None) -> Path:
-    build_dir = cache_dir / nightly.tag
+    build_dir = build_dir_for(nightly, cache_dir)
     try:
         return _find_servoshell(build_dir)
     except FileNotFoundError:
         pass
-    archive = download_bundle(nightly.asset_url, cache_dir / f"{nightly.tag}.tar.gz", token=token, timeout=120)
+    archive = download_bundle(nightly.asset_url, build_dir.with_name(f"{nightly.tag}.tar.gz"), token=token, timeout=120)
     if build_dir.exists():
         shutil.rmtree(build_dir)
     build_dir.mkdir(parents=True)
@@ -124,6 +130,9 @@ def reproduces(
     regex = re.compile(pattern) if pattern else None
     for _ in range(attempts):
         result = run_single_test(binary=binary, testcase=testcase, servo_args=servo_args, timeout=timeout)
+        if result.status == TestStatus.ERROR or result.exit_code == 127:
+            detail = result.error_message or (result.combined_output or "").strip()[-500:]
+            raise ValueError(f"Failed to launch {binary}: {detail}")
         if regex is None:
             if result.crash_info is not None:
                 return True
@@ -190,15 +199,18 @@ def bisect_nightlies(
     return BisectResult(last_good=nightlies[good_idx], first_bad=nightlies[bad_idx], tested=tested)
 
 
-def fetch_commit_range(result: BisectResult, token: Optional[str] = None) -> list[str]:
+def fetch_commit_range(result: BisectResult, token: Optional[str] = None, max_pages: int = 30) -> list[str]:
     if not (result.last_good.sha and result.first_bad.sha):
         return []
-    url = f"https://api.github.com/repos/{UPSTREAM_REPO}/compare/{result.last_good.sha}...{result.first_bad.sha}?per_page=250"
-    data = _get_json(url, token)
-    return [
-        f"{c['sha'][:10]} {c['commit']['message'].splitlines()[0]}"
-        for c in data.get("commits", [])
-    ]
+    base = f"https://api.github.com/repos/{UPSTREAM_REPO}/compare/{result.last_good.sha}...{result.first_bad.sha}"
+    commits: list[dict] = []
+    for page in range(1, max_pages + 1):
+        data = _get_json(f"{base}?per_page=100&page={page}", token)
+        batch = data.get("commits", [])
+        commits.extend(batch)
+        if not batch or len(commits) >= data.get("total_commits", 0):
+            break
+    return [f"{c['sha'][:10]} {c['commit']['message'].splitlines()[0]}" for c in commits]
 
 
 def format_bisect_report(result: BisectResult, testcase: Path, commits: list[str]) -> str:
@@ -245,7 +257,7 @@ def run_bisect(
             return reproduces(binary, testcase, pattern, attempts=attempts, timeout=timeout, servo_args=servo_args)
         finally:
             if not keep_builds:
-                shutil.rmtree(cache_dir / nightly.tag, ignore_errors=True)
+                shutil.rmtree(build_dir_for(nightly, cache_dir), ignore_errors=True)
 
     result = bisect_nightlies(nightlies, is_bad, good=good, bad=bad)
     try:

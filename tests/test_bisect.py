@@ -1,7 +1,20 @@
 """Tests for nightly bisection."""
 import unittest
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
-from servo_fuzzing.bisect import BisectResult, Nightly, bisect_nightlies, format_bisect_report, parse_release
+from servo_fuzzing.bisect import (
+    BisectResult,
+    Nightly,
+    bisect_nightlies,
+    build_dir_for,
+    fetch_commit_range,
+    format_bisect_report,
+    parse_release,
+    reproduces,
+)
+from servo_fuzzing.executor import TestStatus
 
 
 def make_nightlies(count):
@@ -64,6 +77,29 @@ class TestBisect(unittest.TestCase):
         report = format_bisect_report(result, __import__("pathlib").Path("t.html"), ["abc fix"])
         self.assertIn("https://github.com/servo/servo/compare/0000000...0000001", report)
         self.assertIn("- abc fix", report)
+
+    def test_launch_failure_is_error_not_good(self):
+        failed = SimpleNamespace(status=TestStatus.PASS, exit_code=127, error_message=None,
+                                 combined_output="error while loading shared libraries", crash_info=None)
+        with patch("servo_fuzzing.bisect.run_single_test", return_value=failed):
+            with self.assertRaisesRegex(ValueError, "Failed to launch"):
+                reproduces(Path("servoshell"), Path("t.html"), "panic")
+
+    def test_build_dir_depends_on_asset(self):
+        linux = Nightly("2026-01-01", None, "https://github.com/servo/servo-nightly-builds/releases/download/2026-01-01/linux.tar.gz")
+        arm = Nightly("2026-01-01", None, "https://github.com/servo/servo-nightly-builds/releases/download/2026-01-01/arm.tar.gz")
+        self.assertNotEqual(build_dir_for(linux, Path("c")), build_dir_for(arm, Path("c")))
+
+    def test_commit_range_follows_pages(self):
+        def page(n):
+            return {"total_commits": 150, "commits": [
+                {"sha": f"{i:040x}", "commit": {"message": f"c{i}"}} for i in range((n - 1) * 100, min(n * 100, 150))
+            ]}
+        good, bad = make_nightlies(2)
+        result = BisectResult(last_good=good, first_bad=bad, tested={})
+        with patch("servo_fuzzing.bisect._get_json", side_effect=lambda url, _: page(int(url.rsplit("=", 1)[1]))):
+            commits = fetch_commit_range(result)
+        self.assertEqual(len(commits), 150)
 
 
 if __name__ == "__main__":
