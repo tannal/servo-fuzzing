@@ -115,6 +115,9 @@ servo-fuzzing bisect testcase.html --pattern "parent_proxy"
 # Generate a formatted GitHub issue report from a crash
 servo-fuzzing report testcase.html --binary ./servo/servoshell
 
+# Same, as an evidence pack with the regression range for people and agents
+servo-fuzzing report testcase.html --binary ./servo/servoshell --pack target/reports/crash --bisect
+
 # Regenerate both signature files from the B-fuzzing issues of servo/servo
 servo-fuzzing sync-issues
 ```
@@ -217,6 +220,37 @@ search narrows it to adjacent nightlies. The report links the
 Use `--good`/`--bad YYYY-MM-DD` to bound the search, `--attempts` for flaky
 crashes and `--asset` for other platforms. Set `GITHUB_TOKEN` to avoid API
 rate limits.
+
+### Crash Reports and Evidence Packs
+
+`report` runs a testcase and prints an issue draft: title, labels, testcase,
+reproduction rate and the backtrace without renderer logs. With `--pack` it
+writes a directory that a developer, a maintainer of this corpus and a coding
+agent can all work from:
+
+```bash
+servo-fuzzing report reduced.html --binary ./servo/servoshell \
+    --pack target/reports/my-crash --original generated.html --bisect
+```
+
+| File | Reader | Content |
+|---|---|---|
+| `issue.md` | Servo developers | Measured facts only: testcase, reproduction rate, regression range, backtrace |
+| `context.json` | agents, scripts | The same facts as data, plus the source around the panic line and every commit in the range with its changed files |
+| `AGENT.md` | agents | The analysis task: make the fuzzer's generated names readable, ablate, map the crash to Servo source |
+| `analysis.md` | people and agents | Root cause notes, with verified facts apart from hypotheses |
+| `signature_draft.json` | people | Draft signature of this crash. It reaches `signatures/rust-panic.json` through the upstream sync once the issue is filed |
+
+`--bisect` runs the nightly bisect above and scores each commit in the range by
+how directly it touches the crash: adding the panic message, changing the
+panicking file, or changing a file in the backtrace. `issue.md` lists the
+closest ones; none of them is confirmed by building it.
+
+The tool never calls a model. To get an analysis, point an agent at the pack
+directory and `AGENT.md`, or fill in `analysis.md` by hand. Re-running `report`
+regenerates everything except `analysis.md`. Its filled-in sections are copied
+into `issue.md` only with `--include-analysis`, so what gets posted upstream is
+an explicit choice.
 
 ### Reducing Test Cases with Lithium
 

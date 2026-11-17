@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import shlex
 import sys
 from pathlib import Path
@@ -9,13 +10,23 @@ from typing import Any, Optional
 
 from .bisect import DEFAULT_ASSET, DEFAULT_NIGHTLY_REPO, format_bisect_report, run_bisect
 from .bundle import DEFAULT_MAX_TIMEOUT_TESTS, download_bundle, pack_bundle, unpack_bundle
-from .executor import run_single_test
+from .evidence import (
+    ANALYSIS_FILE,
+    Evidence,
+    fetch_range_commits,
+    fetch_source_snippet,
+    github_fetchers,
+    render_issue,
+    version_sha,
+    write_evidence_pack,
+)
+from .executor import TestResult, TestStatus, run_single_test
 from .generators import GeneratorManager
 from .github_sync import (
     sync_signatures_from_github,
 )
 from .reducer import reduce_delta_lines, reduce_with_lithium
-from .reporter import make_github_issue_draft
+from .reporter import make_signature_draft
 from .reproduce import estimate_reproducibility, parallelize_test, repeat_test
 from .runner import get_servo_version, main as runner_main
 from .signatures import load_signatures, save_signatures, sync_draft_signatures
@@ -208,18 +219,80 @@ def cmd_bisect(args: argparse.Namespace) -> int:
 
 def cmd_report(args: argparse.Namespace) -> int:
     binary = Path(args.binary)
-    testcase = Path(args.testcase)
+    testcase = Path(args.testcase).resolve()
+    if not testcase.exists():
+        print(f"Error: Testcase not found: {testcase}")
+        return 1
+    servo_args = shlex.split(args.servo_args)
 
-    print(f"Running {testcase} on {binary}...")
-    res = run_single_test(binary=binary, testcase=testcase, timeout=args.timeout)
-    draft = make_github_issue_draft(res, servo_version=get_servo_version(binary))
+    def crash_site(result: TestResult) -> Optional[tuple]:
+        info = result.crash_info
+        return (info.message, info.source_file, info.line) if info else None
+
+    crashing: list[TestResult] = []
+    for attempt in range(1, args.attempts + 1):
+        print(f"[{attempt}/{args.attempts}] Running {testcase} on {binary}...")
+        res = run_single_test(binary=binary, testcase=testcase, servo_args=servo_args, timeout=args.timeout)
+        crashed = res.crash_info is not None or res.status == TestStatus.NEW_CRASH
+        if crashed and (not crashing or crash_site(res) == crash_site(crashing[0])):
+            crashing.append(res)
+    if not crashing:
+        print(f"Error: no crash in {args.attempts} run(s); nothing to report.")
+        return 1
+
+    evidence = Evidence(
+        testcase=testcase,
+        result=crashing[0],
+        servo_version=get_servo_version(binary),
+        servo_args=servo_args,
+        attempts=args.attempts,
+        crashes=len(crashing),
+        original=Path(args.original).resolve() if args.original else None,
+    )
+    crash = evidence.crash
+    fetch_json, fetch_text = github_fetchers(args.token)
+
+    if args.bisect:
+        try:
+            evidence.bisect, _ = run_bisect(
+                testcase=testcase,
+                pattern=re.escape(crash.message) if crash else None,
+                good=args.good,
+                bad=args.bad,
+                attempts=args.attempts,
+                timeout=args.timeout,
+                servo_args=servo_args,
+                cache_dir=Path(args.cache_dir),
+                token=args.token,
+            )
+            evidence.commits = fetch_range_commits(evidence.bisect, crash, fetch_json)
+        except Exception as exc:
+            print(f"Warning: bisect failed, report has no regression range: {exc}")
+
+    source_ref = version_sha(evidence.servo_version)
+    if crash and source_ref:
+        try:
+            evidence.snippet = fetch_source_snippet(crash, source_ref, fetch_text)
+        except Exception as exc:
+            print(f"Warning: could not fetch {crash.source_file}@{source_ref}: {exc}")
+
+    if args.pack:
+        issue_path = write_evidence_pack(evidence, Path(args.pack), include_analysis=args.include_analysis)
+        draft = issue_path.read_text(encoding="utf-8")
+    else:
+        draft = render_issue(evidence)
     print("\n" + "=" * 60)
     print(draft)
     print("=" * 60)
+    if crash:
+        print("Signature draft for signatures/rust-panic.json:")
+        print(json.dumps(make_signature_draft(crash), indent=2))
 
     if args.output:
-        Path(args.output).write_text(draft + "\n", encoding="utf-8")
+        Path(args.output).write_text(draft, encoding="utf-8")
         print(f"Draft report saved to {args.output}")
+    if args.pack:
+        print(f"Evidence pack written to {Path(args.pack).resolve()} (analysis goes in {ANALYSIS_FILE})")
     return 0
 
 
@@ -432,6 +505,24 @@ def main(argv: Optional[list[str]] = None) -> int:
     p_rep.add_argument("--binary", required=True, help="Path to servoshell binary")
     p_rep.add_argument("-o", "--output", help="Save report to file")
     p_rep.add_argument("--timeout", type=float, default=5.0, help="Timeout in seconds")
+    p_rep.add_argument("--attempts", type=int, default=3, help="Runs used for the reproducibility rate")
+    p_rep.add_argument("--servo-args", default="-xfz", help="Arguments passed to servoshell")
+    p_rep.add_argument(
+        "--pack",
+        metavar="DIR",
+        help="Write an evidence pack: issue.md for people, context.json and AGENT.md for agents, analysis.md for both",
+    )
+    p_rep.add_argument("--original", help="Unreduced testcase to keep in the pack")
+    p_rep.add_argument(
+        "--include-analysis",
+        action="store_true",
+        help="Append the filled-in sections of the pack's analysis.md to issue.md",
+    )
+    p_rep.add_argument("--bisect", action="store_true", help="Bisect nightlies and add the regression range")
+    p_rep.add_argument("--good", help="With --bisect: nightly tag known to be good")
+    p_rep.add_argument("--bad", help="With --bisect: nightly tag known to be bad")
+    p_rep.add_argument("--cache-dir", default="target/bisect", help="With --bisect: where nightlies are downloaded")
+    p_rep.add_argument("--token", help="GitHub token (defaults to GITHUB_TOKEN / GH_TOKEN)")
     p_rep.set_defaults(func=cmd_report)
 
     p_add = subparsers.add_parser("add-signature", help="Add a signature to rust-panic.json")

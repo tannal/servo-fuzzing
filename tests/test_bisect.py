@@ -85,6 +85,13 @@ class TestBisect(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "Failed to launch"):
                 reproduces(Path("servoshell"), Path("t.html"), "panic")
 
+    def test_native_crash_without_panic_text_reproduces(self):
+        segfault = SimpleNamespace(status=TestStatus.NEW_CRASH, exit_code=-11, error_message=None,
+                                   combined_output="", stdout="", stderr="", crash_info=None)
+        with patch("servo_fuzzing.bisect.run_single_test", return_value=segfault):
+            self.assertTrue(reproduces(Path("servoshell"), Path("t.html"), None, attempts=1))
+            self.assertFalse(reproduces(Path("servoshell"), Path("t.html"), "panic", attempts=1))
+
     def test_build_dir_depends_on_asset(self):
         linux = Nightly("2026-01-01", None, "https://github.com/servo/servo-nightly-builds/releases/download/2026-01-01/linux.tar.gz")
         arm = Nightly("2026-01-01", None, "https://github.com/servo/servo-nightly-builds/releases/download/2026-01-01/arm.tar.gz")
