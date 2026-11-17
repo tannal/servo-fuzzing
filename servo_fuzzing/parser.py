@@ -182,22 +182,50 @@ def _make_crash_info(
     )
 
 
+PANIC_HOOK_MARKER = "Panic hook called."
+PANIC_MESSAGE_KEYWORDS = ("panic", "assertion failed", "called `", "unwrap()", "entered unreachable code")
+
+
+def _find_panic_hook_match(output: str) -> Optional[re.Match]:
+    """Pick the panic line among every `message (at location)` line in the output.
+
+    Page output such as CSS warnings (`gradient(at center 10em ...)`) has the same
+    shape, so a line naming a Rust source file or panic wording wins over the rest,
+    and lines printed before the panic hook ran are only a last resort.
+    """
+    matches = list(PANIC_HOOK_PATTERN.finditer(output))
+    marker = output.find(PANIC_HOOK_MARKER)
+    after_hook = [m for m in matches if m.start() >= marker] if marker != -1 else []
+
+    def looks_like_panic(m: re.Match) -> bool:
+        return ".rs" in m.group("path") or any(k in m.group("message").lower() for k in PANIC_MESSAGE_KEYWORDS)
+
+    for candidates in (after_hook, matches):
+        for m in candidates:
+            if looks_like_panic(m):
+                return m
+    if "panic_hook" not in output:
+        return None
+    for candidates in (after_hook, matches):
+        if candidates:
+            return candidates[0]
+    return None
+
+
 def parse_crash(output: str) -> Optional[CrashInfo]:
     if not output:
         return None
 
-    for m in PANIC_HOOK_PATTERN.finditer(output):
-        path_str = m.group("path")
-        msg = m.group("message")
-        if ".rs" in path_str or any(k in msg.lower() for k in ("panic", "assertion failed", "called `", "unwrap()", "entered unreachable code")) or "panic_hook" in output:
-            return _make_crash_info(
-                message=msg,
-                path_str=path_str,
-                output=output,
-                thread=m.group("thread"),
-                line=m.group("line"),
-                col=m.group("col"),
-            )
+    m = _find_panic_hook_match(output)
+    if m:
+        return _make_crash_info(
+            message=m.group("message"),
+            path_str=m.group("path"),
+            output=output,
+            thread=m.group("thread"),
+            line=m.group("line"),
+            col=m.group("col"),
+        )
 
     std_match = STD_PANIC_PATTERN.search(output)
     if std_match:
