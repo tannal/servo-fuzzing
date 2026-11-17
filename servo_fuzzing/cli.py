@@ -2,34 +2,31 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
+import os
 import shlex
 import sys
 from pathlib import Path
 from typing import Any, Optional
 
 from .bisect import DEFAULT_ASSET, DEFAULT_NIGHTLY_REPO, format_bisect_report, run_bisect
-from .bundle import DEFAULT_MAX_TIMEOUT_TESTS, download_bundle, pack_bundle, unpack_bundle
-from .evidence import (
-    ANALYSIS_FILE,
-    Evidence,
-    fetch_range_commits,
-    fetch_source_snippet,
-    github_fetchers,
-    render_issue,
-    version_sha,
-    write_evidence_pack,
-)
-from .executor import TestResult, TestStatus, run_single_test
+from .bundle import DEFAULT_MAX_TIMEOUT_TESTS, download_bundle, get_default_bundle_repo, pack_bundle, unpack_bundle
+from .evidence import ANALYSIS_FILE, Evidence, gather_evidence, render_issue, write_evidence_pack
 from .generators import GeneratorManager
 from .github_sync import (
     sync_signatures_from_github,
 )
+from .proposals import Proposal, existing_proposal, propose_panics
 from .reducer import reduce_delta_lines, reduce_with_lithium
 from .reporter import make_signature_draft
 from .reproduce import estimate_reproducibility, parallelize_test, repeat_test
-from .runner import get_servo_version, main as runner_main
-from .signatures import load_signatures, save_signatures, sync_draft_signatures
+from .runner import main as runner_main
+from .signatures import (
+    default_pending_dir,
+    load_pending_signatures,
+    load_signatures,
+    save_signatures,
+    sync_draft_signatures,
+)
 
 
 def cmd_run(args: argparse.Namespace) -> int:
@@ -223,58 +220,23 @@ def cmd_report(args: argparse.Namespace) -> int:
     if not testcase.exists():
         print(f"Error: Testcase not found: {testcase}")
         return 1
-    servo_args = shlex.split(args.servo_args)
-
-    def crash_site(result: TestResult) -> Optional[tuple]:
-        info = result.crash_info
-        return (info.message, info.source_file, info.line) if info else None
-
-    crashing: list[TestResult] = []
-    for attempt in range(1, args.attempts + 1):
-        print(f"[{attempt}/{args.attempts}] Running {testcase} on {binary}...")
-        res = run_single_test(binary=binary, testcase=testcase, servo_args=servo_args, timeout=args.timeout)
-        crashed = res.crash_info is not None or res.status == TestStatus.NEW_CRASH
-        if crashed and (not crashing or crash_site(res) == crash_site(crashing[0])):
-            crashing.append(res)
-    if not crashing:
+    evidence = gather_evidence(
+        binary=binary,
+        testcase=testcase,
+        servo_args=shlex.split(args.servo_args),
+        attempts=args.attempts,
+        timeout=args.timeout,
+        original=Path(args.original).resolve() if args.original else None,
+        bisect=args.bisect,
+        good=args.good,
+        bad=args.bad,
+        cache_dir=Path(args.cache_dir),
+        token=args.token,
+    )
+    if evidence is None:
         print(f"Error: no crash in {args.attempts} run(s); nothing to report.")
         return 1
-
-    evidence = Evidence(
-        testcase=testcase,
-        result=crashing[0],
-        servo_version=get_servo_version(binary),
-        servo_args=servo_args,
-        attempts=args.attempts,
-        crashes=len(crashing),
-        original=Path(args.original).resolve() if args.original else None,
-    )
     crash = evidence.crash
-    fetch_json, fetch_text = github_fetchers(args.token)
-
-    if args.bisect:
-        try:
-            evidence.bisect, _ = run_bisect(
-                testcase=testcase,
-                pattern=re.escape(crash.message) if crash else None,
-                good=args.good,
-                bad=args.bad,
-                attempts=args.attempts,
-                timeout=args.timeout,
-                servo_args=servo_args,
-                cache_dir=Path(args.cache_dir),
-                token=args.token,
-            )
-            evidence.commits = fetch_range_commits(evidence.bisect, crash, fetch_json)
-        except Exception as exc:
-            print(f"Warning: bisect failed, report has no regression range: {exc}")
-
-    source_ref = version_sha(evidence.servo_version)
-    if crash and source_ref:
-        try:
-            evidence.snippet = fetch_source_snippet(crash, source_ref, fetch_text)
-        except Exception as exc:
-            print(f"Warning: could not fetch {crash.source_file}@{source_ref}: {exc}")
 
     if args.pack:
         issue_path = write_evidence_pack(evidence, Path(args.pack), include_analysis=args.include_analysis)
@@ -340,6 +302,8 @@ def cmd_sync_issues(args: argparse.Namespace) -> int:
         repo=args.repo,
         token=args.token,
         dry_run=args.dry_run,
+        pending_dir=Path(args.pending) if args.pending else default_pending_dir(Path(args.signatures)),
+        reports_dir=Path(args.reports),
     )
     summary = result.to_markdown(args.repo)
     print("\n" + summary)
@@ -392,10 +356,46 @@ def cmd_bundle(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_propose(args: argparse.Namespace) -> int:
+    binary = Path(args.binary).resolve()
+    repo = args.repo or os.environ.get("GITHUB_REPOSITORY") or get_default_bundle_repo()
+
+    def find_existing(signature_id: str) -> Optional[Proposal]:
+        try:
+            return existing_proposal(repo, signature_id, args.token)
+        except Exception as exc:
+            print(f"Warning: could not look up pull requests for {signature_id} in {repo}: {exc}")
+            return None
+
+    def gather(testcase: Path) -> Optional[Evidence]:
+        return gather_evidence(
+            binary=binary,
+            testcase=testcase,
+            servo_args=shlex.split(args.servo_args),
+            attempts=args.attempts,
+            timeout=args.timeout,
+            bisect=args.bisect,
+            cache_dir=Path(args.cache_dir),
+            token=args.token,
+        )
+
+    proposed = propose_panics(
+        drafts_path=Path(args.drafts),
+        corpus_dir=Path(args.corpus),
+        out_dir=Path(args.output),
+        gather=gather,
+        repo=repo,
+        find_existing=find_existing if args.skip_proposed else None,
+        limit=args.max_panics,
+    )
+    print(f"Proposed {len(proposed)} new panic(s) under {args.output}")
+    return 0
+
+
 def cmd_validate_signatures(args: argparse.Namespace) -> int:
     sig_path = Path(args.signatures)
     try:
-        sigs = load_signatures(sig_path)
+        sigs = load_pending_signatures(sig_path) if sig_path.is_dir() else load_signatures(sig_path)
         print(f"Signatures database {sig_path} is valid.")
         print(f"Total signatures: {len(sigs)}")
         for s in sigs:
@@ -538,6 +538,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     p_sync = subparsers.add_parser("sync-issues", help="Regenerate both signature files from upstream B-fuzzing issues")
     p_sync.add_argument("--signatures", default="signatures/rust-panic.json", help="Output for open issues")
     p_sync.add_argument("--history", default="signatures/fixed-history.json", help="Output for closed issues")
+    p_sync.add_argument("--pending", help="Pending signatures to drop once filed upstream (default: pending/ beside --signatures)")
+    p_sync.add_argument("--reports", default="reports", help="Reports of the pending signatures, dropped with them")
     p_sync.add_argument("--summary", help="Append a Markdown summary to this file (e.g. $GITHUB_STEP_SUMMARY)")
     p_sync.add_argument("--repo", default="servo/servo", help="Target GitHub repo")
     p_sync.add_argument("--token", help="GitHub Personal Access Token")
@@ -590,8 +592,31 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     p_bundle.set_defaults(func=cmd_bundle)
 
-    p_val = subparsers.add_parser("validate-signatures", help="Validate rust-panic.json schema")
-    p_val.add_argument("--signatures", default="signatures/rust-panic.json", help="Path to signatures file")
+    p_prop = subparsers.add_parser(
+        "propose",
+        help="Write a pending signature and a report for each new panic of a triage run, ready to commit",
+    )
+    p_prop.add_argument("--drafts", default="target/triage/draft-signatures.json", help="Draft signatures of the run")
+    p_prop.add_argument("--corpus", default="target/panic-corpus", help="Directory holding <id>.html reproducers")
+    p_prop.add_argument("--binary", default="./servo/servoshell", help="Path to servoshell binary")
+    p_prop.add_argument("--output", default="target/proposals", help="Receives signatures/pending/ and reports/")
+    p_prop.add_argument("--repo", help="Repository the reports are committed to (default: GITHUB_REPOSITORY)")
+    p_prop.add_argument("--skip-proposed", action="store_true", help="Skip panics that already have a pull request from new-panic/<id>")
+    p_prop.add_argument("--max-panics", type=int, default=5, help="Maximum panics to report per run")
+    p_prop.add_argument("--attempts", type=int, default=3, help="Runs used for the reproducibility rate")
+    p_prop.add_argument("--timeout", type=float, default=5.0, help="Per-run timeout in seconds")
+    p_prop.add_argument(
+        "--servo-args",
+        default="-xfz --enable-experimental-web-platform-features",
+        help="Arguments passed to servoshell",
+    )
+    p_prop.add_argument("--bisect", action="store_true", help="Bisect nightlies and add the regression range")
+    p_prop.add_argument("--cache-dir", default="target/bisect", help="With --bisect: where nightlies are downloaded")
+    p_prop.add_argument("--token", help="GitHub token (defaults to GITHUB_TOKEN / GH_TOKEN)")
+    p_prop.set_defaults(func=cmd_propose)
+
+    p_val = subparsers.add_parser("validate-signatures", help="Validate a signatures file or a pending directory")
+    p_val.add_argument("--signatures", default="signatures/rust-panic.json", help="Signatures file or pending directory")
     p_val.set_defaults(func=cmd_validate_signatures)
 
     p_import = subparsers.add_parser("import", help="Import, triage, deduplicate, and minimize raw fuzzer crashes")

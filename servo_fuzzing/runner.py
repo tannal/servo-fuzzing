@@ -10,7 +10,7 @@ from typing import Any, Optional
 
 from .executor import TestResult, TestStatus, run_single_test, run_suite
 from .reporter import print_cli_summary, write_artifacts
-from .signatures import default_fixed_history_path, load_signatures
+from .signatures import default_fixed_history_path, load_known_signatures, load_signatures
 
 
 def load_config(config_path: Path) -> dict[str, Any]:
@@ -132,8 +132,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     fixed_signatures = []
     if signatures_path and signatures_path.exists():
         try:
-            signatures = load_signatures(signatures_path)
-            print(f"Loaded {len(signatures)} known crash signatures from {signatures_path}.")
+            signatures = load_known_signatures(signatures_path)
+            print(f"Loaded {len(signatures)} known crash signatures from {signatures_path} and its pending directory.")
             history_path = default_fixed_history_path(signatures_path)
             if history_path.exists():
                 fixed_signatures = load_signatures(history_path)

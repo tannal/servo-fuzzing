@@ -16,6 +16,17 @@ class CrashSignature(TypedDict):
     issue: str
 
 
+def _check_signature(entry: object) -> None:
+    if not isinstance(entry, dict):
+        raise ValueError("Each signature must be an object")
+    for field in ("id", "message", "source_file", "issue"):
+        if not isinstance(entry.get(field), str) or not entry[field].strip():
+            raise ValueError(f"Signature needs nonempty {field}")
+    frames = entry.get("stack_frames")
+    if not isinstance(frames, list) or not all(isinstance(f, str) and f.strip() for f in frames):
+        raise ValueError("Signature needs a stack_frames list of nonempty strings")
+
+
 def load_signatures(path: Path) -> list[CrashSignature]:
     data = json.loads(path.read_text(encoding="utf-8"))
     if (
@@ -28,14 +39,7 @@ def load_signatures(path: Path) -> list[CrashSignature]:
 
     seen = set()
     for entry in data["signatures"]:
-        if not isinstance(entry, dict):
-            raise ValueError("Each signature must be an object")
-        for field in ("id", "message", "source_file", "issue"):
-            if not isinstance(entry.get(field), str) or not entry[field].strip():
-                raise ValueError(f"Signature needs nonempty {field}")
-        frames = entry.get("stack_frames")
-        if not isinstance(frames, list) or not all(isinstance(f, str) and f.strip() for f in frames):
-            raise ValueError("Signature needs a stack_frames list of nonempty strings")
+        _check_signature(entry)
         if entry["id"] in seen:
             raise ValueError("Duplicate signature id")
         seen.add(entry["id"])
@@ -84,6 +88,42 @@ def find_signature_by_issue(signatures: list[CrashSignature], issue: str) -> Opt
 
 def default_fixed_history_path(signatures_path: Path) -> Path:
     return Path(signatures_path).with_name("fixed-history.json")
+
+
+def default_pending_dir(signatures_path: Path) -> Path:
+    return Path(signatures_path).with_name("pending")
+
+
+def load_pending_signatures(pending_dir: Path) -> list[CrashSignature]:
+    """Panics found here that have no upstream issue yet, one `<id>.json` each."""
+    entries: list[CrashSignature] = []
+    for path in sorted(Path(pending_dir).glob("*.json")):
+        try:
+            entry = json.loads(path.read_text(encoding="utf-8"))
+            _check_signature(entry)
+        except ValueError as error:
+            raise ValueError(f"{path}: {error}") from error
+        if entry["id"] != path.stem:
+            raise ValueError(f"{path}: signature id must equal the file name")
+        entries.append(entry)
+    return entries
+
+
+def save_pending_signature(pending_dir: Path, entry: CrashSignature) -> Path:
+    _check_signature(entry)
+    path = Path(pending_dir) / f"{entry['id']}.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(entry, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    return path
+
+
+def load_known_signatures(signatures_path: Path, pending_dir: Optional[Path] = None) -> list[CrashSignature]:
+    """Signatures of open upstream issues followed by the pending ones beside them."""
+    signatures_path = Path(signatures_path)
+    known = load_signatures(signatures_path) if signatures_path.exists() else []
+    pending_dir = Path(pending_dir) if pending_dir else default_pending_dir(signatures_path)
+    taken = {entry["id"] for entry in known}
+    return known + [entry for entry in load_pending_signatures(pending_dir) if entry["id"] not in taken]
 
 
 def find_matching_signature_entry(
@@ -189,8 +229,8 @@ def sync_draft_signatures(
     """Deduplicate the new crashes of a triage run into `drafts_path`.
 
     The known signatures and the fixed history are only read: they are regenerated
-    from upstream issues by `sync-issues`, so a crash becomes known once its issue
-    is filed with the B-fuzzing label.
+    from upstream issues by `sync-issues`. A crash becomes known once its issue is
+    filed with the B-fuzzing label or its draft is committed under `pending/`.
 
     `drafts_path` describes this run only and is removed when the run has no new
     panic. `corpus_out_dir` may be shared between runs: each reproducer `<id>.html`
@@ -200,7 +240,7 @@ def sync_draft_signatures(
     signatures_path = Path(signatures_path)
     drafts_path = Path(drafts_path) if drafts_path else default_drafts_path(triage_dir)
     history_path = Path(fixed_history_path) if fixed_history_path else default_fixed_history_path(signatures_path)
-    existing_sigs = load_signatures(signatures_path) if signatures_path.exists() else []
+    existing_sigs = load_known_signatures(signatures_path)
     fixed_sigs = load_signatures(history_path) if history_path.exists() else []
     new_crashes_dir = Path(triage_dir) / "new_crashes"
 

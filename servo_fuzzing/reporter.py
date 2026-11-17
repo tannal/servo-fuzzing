@@ -9,6 +9,9 @@ from .executor import SuiteSummary, TestResult, TestStatus
 from .parser import CrashInfo, generate_descriptive_name, normalize_panic_message, normalize_source_path
 
 
+PLACEHOLDER_FRAME = "<fill_in_distinctive_frame>"
+
+
 def make_signature_draft(crash: CrashInfo, issue_url: str = "https://github.com/servo/servo/issues/TODO") -> dict[str, Any]:
     sig_id = generate_descriptive_name(crash)
 
@@ -23,7 +26,7 @@ def make_signature_draft(crash: CrashInfo, issue_url: str = "https://github.com/
         "id": sig_id,
         "message": crash.message,
         "source_file": crash.source_file,
-        "stack_frames": frames if frames else ["<fill_in_distinctive_frame>"],
+        "stack_frames": frames if frames else [PLACEHOLDER_FRAME],
         "issue": issue_url,
     }
 

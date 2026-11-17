@@ -65,7 +65,7 @@ You can triage and minimize a directory or archive of raw crash HTMLs locally or
     --corpus target/panic-corpus \
     --lookup-github
   ```
-  Draft signatures go to `target/triage/draft-signatures.json`; the files in `signatures/` are not modified.
+  Draft signatures go to `target/triage/draft-signatures.json`; the files in `signatures/` are not modified. In CI, each new panic becomes a [pull request](#pull-requests-for-new-panics).
 - **Zero-git CI upload (GitHub Issue / Release / Manual Dispatch)**:
   1. Archive your crash HTMLs (`tar -czf crashes.tar.gz crashes/`).
   2. Open an issue on GitHub, drag-and-drop `crashes.tar.gz` into the issue body, and add the `fuzz-import` label (or comment `/triage`).
@@ -120,6 +120,9 @@ servo-fuzzing report testcase.html --binary ./servo/servoshell --pack target/rep
 
 # Regenerate both signature files from the B-fuzzing issues of servo/servo
 servo-fuzzing sync-issues
+
+# Write a pending signature and an evidence pack for each new panic of a triage run
+servo-fuzzing propose --drafts target/triage/draft-signatures.json --corpus target/panic-corpus --bisect
 ```
 
 ---
@@ -131,7 +134,9 @@ Both files are generated from the [`B-fuzzing`](https://github.com/servo/servo/i
 - **`signatures/rust-panic.json`**: one signature per **open** issue. Matches are classified as `KNOWN_CRASH` and ignored in PR gating so unrelated pre-existing bugs do not block merges.
 - **`signatures/fixed-history.json`**: one signature per **closed** issue. Matches are classified as `REGRESSION` (failing PR CI with a link to the previously closed issue).
 
-A crash that matches neither file is new. Triage writes a draft for it to `target/triage/draft-signatures.json`; it becomes known once its issue is filed upstream with the `B-fuzzing` label and the next sync runs. See [GitHub Issues Synchronization](#github-issues-synchronization).
+- **`signatures/pending/<id>.json`**: one file per panic found here that has **no upstream issue yet**. Loaded together with `rust-panic.json` and classified as `KNOWN_CRASH`; its `issue` field links to the report in `reports/<id>/`. Added by the [new panic pull requests](#pull-requests-for-new-panics), removed by the sync once the issue exists upstream.
+
+A crash that matches none of them is new. Triage writes a draft for it to `target/triage/draft-signatures.json`. See [GitHub Issues Synchronization](#github-issues-synchronization).
 
 ```json
 {
@@ -239,7 +244,7 @@ servo-fuzzing report reduced.html --binary ./servo/servoshell \
 | `context.json` | agents, scripts | The same facts as data, plus the source around the panic line and every commit in the range with its changed files |
 | `AGENT.md` | agents | The analysis task: make the fuzzer's generated names readable, ablate, map the crash to Servo source |
 | `analysis.md` | people and agents | Root cause notes, with verified facts apart from hypotheses |
-| `signature_draft.json` | people | Draft signature of this crash. It reaches `signatures/rust-panic.json` through the upstream sync once the issue is filed |
+| `signature_draft.json` | people | Draft signature of this crash. `propose` commits it as `signatures/pending/<id>.json`; it reaches `signatures/rust-panic.json` through the upstream sync once the issue is filed |
 
 `--bisect` runs the nightly bisect above and scores each commit in the range by
 how directly it touches the crash: adding the panic message, changing the
@@ -304,8 +309,25 @@ servo-fuzzing sync-issues \
 - Open issues are written to `--signatures`, closed issues to `--history`, each as `issue-<number>`. Nothing from the previous files is kept, so a signature follows its issue when it is edited, closed or reopened.
 - A signature needs a panic line with a source location (`message (thread ..., at file.rs:line)` or `panicked at file.rs:line`). Issues without one (ASAN reports, signals, debugger backtraces, tracking issues) are listed as skipped; `--summary FILE` writes the counts and the list as Markdown.
 - The files are only written after every GitHub request succeeded and at least one issue was returned.
+- A pending signature whose message and source file match one of the synchronized issues is deleted together with `reports/<id>/` (`--pending`, `--reports`).
 
 `.github/workflows/sync-signatures.yml` runs this daily and on manual dispatch (`gh workflow run sync-signatures.yml`), and opens a pull request when the result differs from the committed files. The fuzzing and import workflows run the same sync before triage, so they compare against the current upstream state without committing anything.
+
+### Pull requests for new panics
+
+The nightly fuzzing job, the weekly campaign and the import workflow open **one pull request per new panic**, from branch `new-panic/<id>`:
+
+```
+signatures/pending/<id>.json   the signature, so the panic stops being reported as new once merged
+reports/<id>/                  the evidence pack: issue.md, context.json, AGENT.md, analysis.md, <id>.html, output.log
+```
+
+1. `servo-fuzzing propose` re-runs each minimized reproducer of the run, bisects it across nightlies and writes both under `target/proposals` (also uploaded as the `panic-proposals` artifact). A reproducer that no longer shows the drafted panic is left out.
+2. `.github/workflows/open-panic-prs.yml` commits each panic to its branch and opens the pull request, with `issue.md` as the description. This job never runs servoshell.
+3. People and agents add root cause notes to `reports/<id>/analysis.md` on that branch, or on `main` after the merge.
+4. Once the issue is filed in `servo/servo` with `B-fuzzing`, the sync pull request removes the pending signature and the report.
+
+A panic whose `new-panic/<id>` branch already has a pull request, open, merged or closed, is not proposed again; reopen the closed one to bring it back. When that pull request is about a different panic that got the same descriptive id, the new one is proposed as `<id>-<hash of its message and source file>`. At most `--max-panics` (default 5) are proposed per run. Pull requests opened with the default `GITHUB_TOKEN` do not trigger the CI workflow.
 
 ---
 

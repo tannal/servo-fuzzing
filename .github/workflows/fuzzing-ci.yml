@@ -45,6 +45,7 @@ jobs:
           done
           servo-fuzzing validate-signatures --signatures signatures/rust-panic.json
           servo-fuzzing validate-signatures --signatures signatures/fixed-history.json
+          servo-fuzzing validate-signatures --signatures signatures/pending
 
       - name: Sync B-fuzzing issues from servo/servo
         env:
@@ -65,6 +66,8 @@ jobs:
     name: Headless DOM Fuzzing
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    outputs:
+      proposals: ${{ steps.propose.outputs.found }}
     steps:
       - name: Checkout servo/fuzzing
         uses: actions/checkout@v7
@@ -116,12 +119,42 @@ jobs:
             --signatures signatures/rust-panic.json \
             --output target/fuzzing
 
-      - name: Collect New Panic Corpus
+      - name: Deduplicate and Minimize New Panics
         if: always()
         run: |
-          if [ -f target/fuzzing/summary.json ]; then
-            python -m servo_fuzzing.collect --input target/fuzzing --output target/panic-corpus
+          if [ -d target/fuzzing/new_crashes ]; then
+            servo-fuzzing sync-drafts \
+              --triage-dir target/fuzzing \
+              --signatures signatures/rust-panic.json \
+              --drafts target/fuzzing/draft-signatures.json \
+              --corpus target/panic-corpus \
+              --reduce-binary ./servo/servoshell \
+              --reduce-timeout 2.0
           fi
+
+      - name: Draft Pending Signatures & Reports for New Panics
+        id: propose
+        if: always() && hashFiles('target/fuzzing/draft-signatures.json') != ''
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          servo-fuzzing propose \
+            --drafts target/fuzzing/draft-signatures.json \
+            --corpus target/panic-corpus \
+            --binary ./servo/servoshell \
+            --output target/proposals \
+            --skip-proposed \
+            --bisect
+          if [ -d target/proposals/signatures/pending ]; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload Panic Proposals
+        if: always() && steps.propose.outputs.found == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: panic-proposals
+          path: target/proposals
 
       - name: Package New Panic Corpus
         if: always()
@@ -151,3 +184,13 @@ jobs:
         with:
           name: fuzzing-artifacts
           path: target/fuzzing/
+
+  # One pull request per new panic: pending signature plus evidence pack.
+  open-panic-prs:
+    name: Propose New Panics
+    needs: fuzzing
+    if: ${{ !cancelled() && needs.fuzzing.outputs.proposals == 'true' }}
+    permissions:
+      contents: write
+      pull-requests: write
+    uses: ./.github/workflows/open-panic-prs.yml

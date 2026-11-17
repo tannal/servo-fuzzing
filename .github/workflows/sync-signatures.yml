@@ -50,13 +50,14 @@ jobs:
           base: main
           draft: false
           add-paths: |
-            signatures/rust-panic.json
-            signatures/fixed-history.json
+            signatures/
+            reports/
           commit-message: "chore(signatures): sync B-fuzzing issues from servo/servo"
           title: "chore: update known fuzzing panic signatures"
           body: |
             Both signature files regenerated from the issues labelled `B-fuzzing` in `servo/servo`:
             open issues in `signatures/rust-panic.json`, closed issues in `signatures/fixed-history.json`.
+            Pending signatures and reports of panics that now have an upstream issue are removed.
 
             Source run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           branch: "automated/sync-fuzzing-signatures"

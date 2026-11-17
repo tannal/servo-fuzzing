@@ -12,7 +12,7 @@ from servo_fuzzing.github_sync import (
     parse_issue_to_signature,
     sync_signatures_from_github,
 )
-from servo_fuzzing.signatures import load_signatures, save_signatures
+from servo_fuzzing.signatures import load_signatures, save_pending_signature, save_signatures
 
 
 def issue(number, body, state="open", title="crash"):
@@ -153,6 +153,46 @@ class RebuildTests(unittest.TestCase):
         self.assertEqual([s["number"] for s in result.skipped], [45946])
         self.assertIn("[#45946](https://github.com/servo/servo/issues/45946) (open): Automated Fuzzing",
                       result.to_markdown("servo/servo"))
+
+    def pending_setup(self, directory):
+        pending, reports = Path(directory) / "pending", Path(directory) / "reports"
+        for signature_id, message, source in (
+            ("filed-upstream", "LengthPercentage not found", "style/servo/attr.rs"),
+            ("still-local", "Not a block context", "components/layout/formatting_contexts.rs"),
+        ):
+            save_pending_signature(pending, {
+                "id": signature_id,
+                "message": message,
+                "source_file": source,
+                "stack_frames": [],
+                "issue": f"https://github.com/tannal/servo-fuzzing/tree/main/reports/{signature_id}",
+            })
+            (reports / signature_id).mkdir(parents=True)
+            (reports / signature_id / "issue.md").write_text("draft")
+        return pending, reports
+
+    def test_pending_signature_and_report_are_removed_once_filed_upstream(self):
+        with tempfile.TemporaryDirectory() as directory:
+            pending, reports = self.pending_setup(directory)
+            result, _, _ = self.run_sync(
+                directory, [issue(49411, PANIC_WITH_BACKTRACE)], [issue(49527, PANIC_WITHOUT_BACKTRACE, state="closed")],
+                pending_dir=pending, reports_dir=reports,
+            )
+            self.assertEqual(sorted(p.name for p in pending.iterdir()), ["still-local.json"])
+            self.assertEqual(sorted(p.name for p in reports.iterdir()), ["still-local"])
+        self.assertEqual([(p["id"], u["id"]) for p, u in result.resolved], [("filed-upstream", "issue-49527")])
+        self.assertIn("`filed-upstream` -> https://github.com/servo/servo/issues/49527", result.to_markdown("servo/servo"))
+
+    def test_dry_run_keeps_pending_files(self):
+        with tempfile.TemporaryDirectory() as directory:
+            pending, reports = self.pending_setup(directory)
+            result, _, _ = self.run_sync(
+                directory, [issue(49527, PANIC_WITHOUT_BACKTRACE)], [], dry_run=True,
+                pending_dir=pending, reports_dir=reports,
+            )
+            self.assertEqual(len(list(pending.iterdir())), 2)
+            self.assertEqual(len(list(reports.iterdir())), 2)
+        self.assertEqual(len(result.resolved), 1)
 
     def test_dry_run_keeps_files(self):
         with tempfile.TemporaryDirectory() as directory:
