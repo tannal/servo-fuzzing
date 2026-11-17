@@ -4,6 +4,7 @@ and an evidence pack each. A workflow commits them as one pull request per panic
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import re
 import shutil
@@ -61,6 +62,12 @@ def _same_panic(signature: Optional[dict], draft: CrashSignature) -> bool:
     ) and normalize_source_path(str(signature.get("source_file", ""))) == normalize_source_path(draft["source_file"])
 
 
+def _id_with_panic_hash(draft: CrashSignature) -> str:
+    """An id that depends only on the panic, so every run derives the same one."""
+    panic = f"{normalize_panic_message(draft['message'])}\n{normalize_source_path(draft['source_file'])}"
+    return f"{draft['id']}-{hashlib.sha1(panic.encode('utf-8')).hexdigest()[:8]}"
+
+
 def report_url(repo: str, signature_id: str) -> str:
     return f"https://github.com/{repo}/tree/main/{REPORTS_SUBDIR.as_posix()}/{signature_id}"
 
@@ -79,7 +86,7 @@ def propose_panics(
     A draft is left out when `find_existing` returns a pull request for the same panic,
     its reproducer is missing, or the reproducer no longer shows the drafted panic.
     Different panics can get the same descriptive id; when the pull request found
-    for an id is about another panic, the draft is proposed as `<id>-1`, `<id>-2`, ...
+    for an id is about another panic, the draft is proposed as `<id>-<hash of the panic>`.
     """
     out_dir = Path(out_dir)
     shutil.rmtree(out_dir, ignore_errors=True)
@@ -88,10 +95,8 @@ def propose_panics(
         print(f"No draft signatures at {drafts_path}; nothing to propose.")
         return []
 
-    drafts = load_signatures(drafts_path)
-    reserved = {draft["id"] for draft in drafts}
     proposed: list[CrashSignature] = []
-    for draft in drafts:
+    for draft in load_signatures(drafts_path):
         draft_id = draft["id"]
         if limit is not None and len(proposed) >= limit:
             print(f"Limit of {limit} proposal(s) reached; {draft_id} is left for a later run.")
@@ -100,19 +105,14 @@ def propose_panics(
             print(f"Skipping {draft_id!r}: not usable as a file and branch name.")
             continue
 
-        signature_id, suffix, existing = draft_id, 0, None
-        while find_existing:
+        signature_id = draft_id
+        existing = find_existing(draft_id) if find_existing else None
+        if existing and not _same_panic(existing.signature, draft):
+            signature_id = _id_with_panic_hash(draft)
             existing = find_existing(signature_id)
-            if existing is None and (signature_id == draft_id or signature_id not in reserved):
-                break
-            if existing and _same_panic(existing.signature, draft):
-                break
-            suffix += 1
-            signature_id = f"{draft_id}-{suffix}"
         if existing:
             print(f"Skipping {draft_id}: already proposed in {existing.url}")
             continue
-        reserved.add(signature_id)
 
         reproducer = Path(corpus_dir) / f"{draft_id}.html"
         if not reproducer.is_file():

@@ -107,30 +107,29 @@ class ProposalTests(unittest.TestCase):
         self.write_drafts(draft("known-one"))
         self.assertEqual(self.propose(find_existing=lambda i: Proposal("https://x/pull/20", None)), [])
 
-    def test_other_panic_with_the_same_id_gets_a_suffix(self):
+    def test_other_panic_with_the_same_id_gets_an_id_with_its_hash(self):
         # "attempt to add with overflow" and "attempt to subtract with overflow" share an id.
         self.write_drafts(draft("lib-overflow", message="attempt to subtract with overflow"))
         pulls = {
             "lib-overflow": Proposal("https://x/pull/20", draft("lib-overflow", message="attempt to add with overflow")),
-            "lib-overflow-1": Proposal("https://x/pull/21", draft("lib-overflow-1", message="attempt to multiply with overflow")),
         }
         gather = lambda t: evidence_for(t, message="attempt to subtract with overflow")  # noqa: E731
         proposed = self.propose(gather=gather, find_existing=pulls.get)
-        self.assertEqual([entry["id"] for entry in proposed], ["lib-overflow-2"])
-        self.assertEqual(load_pending_signatures(self.out / "signatures" / "pending")[0]["id"], "lib-overflow-2")
-        self.assertTrue((self.out / "reports" / "lib-overflow-2" / "lib-overflow-2.html").is_file())
-        self.assertIn("reports/lib-overflow-2", proposed[0]["issue"])
+        new_id = proposed[0]["id"]
+        self.assertRegex(new_id, r"^lib-overflow-[0-9a-f]{8}$")
+        self.assertEqual(load_pending_signatures(self.out / "signatures" / "pending")[0]["id"], new_id)
+        self.assertTrue((self.out / "reports" / new_id / f"{new_id}.html").is_file())
+        self.assertIn(f"reports/{new_id}", proposed[0]["issue"])
 
-        pulls["lib-overflow-2"] = Proposal("https://x/pull/22", proposed[0])
-        self.assertEqual(self.propose(gather=gather, find_existing=pulls.get), [])
-
-    def test_suffix_does_not_take_the_id_of_another_draft(self):
-        self.write_drafts(draft("a", message="one"), draft("a-1", message="two"))
-        proposed = self.propose(
-            gather=lambda t: evidence_for(t, message="one" if t.stem == "a-2" else "two"),
-            find_existing=lambda i: Proposal("https://x/pull/20", draft("a", message="zero")) if i == "a" else None,
+        # The id depends only on the panic: a later run finds that pull request, whatever else it drafts.
+        pulls[new_id] = Proposal("https://x/pull/22", None)
+        self.write_drafts(
+            draft("lib-overflow", message="attempt to subtract with overflow"),
+            draft("lib-overflow-1", message="attempt to multiply with overflow"),
         )
-        self.assertEqual([entry["id"] for entry in proposed], ["a-2", "a-1"])
+        gather = lambda t: evidence_for(t, message="attempt to multiply with overflow")  # noqa: E731
+        proposed = self.propose(gather=gather, find_existing=pulls.get)
+        self.assertEqual([entry["id"] for entry in proposed], ["lib-overflow-1"])
 
     def test_placeholder_frame_is_not_published(self):
         entry = draft("no-backtrace")
