@@ -92,6 +92,7 @@ jobs:
       - name: Locate or Download Crashes
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EVENT_TEXT: ${{ github.event.comment.body || github.event.issue.body || '' }}
         run: |
           mkdir -p target/import
 
@@ -103,7 +104,6 @@ jobs:
           fi
 
           # 2. From Drag-and-Drop Issue Attachment (Zero git, zero branches)
-          EVENT_TEXT="${{ github.event.comment.body || github.event.issue.body || '' }}"
           if [ -n "$EVENT_TEXT" ]; then
             FOUND_URL=$(echo "$EVENT_TEXT" | grep -oE 'https?://[a-zA-Z0-9./_~%-]+/(?:user-attachments/files|files)/[a-zA-Z0-9./_~%-]+|https?://[a-zA-Z0-9./_~%-]+\.(tar\.gz|zip|tgz|html)' | head -n 1 || true)
             if [ -n "$FOUND_URL" ]; then
