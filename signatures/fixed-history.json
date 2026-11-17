@@ -1,5 +1,16 @@
 {
   "schema_version": 1,
-  "signatures": []
+  "signatures": [
+    {
+      "id": "graph-cache-should-have",
+      "message": "Cache should have been filled from traversal",
+      "source_file": "components/media/audio/graph.rs",
+      "stack_frames": [
+        "<servo_media_audio::render_thread::AudioRenderThread>::event_loop",
+        "std::sys::backtrace::__rust_begin_short_backtrace::<<servo_media_audio::context::AudioContext>::new<servo_media_gstreamer::GStreamerBackend>::{closure#0},",
+        "<std::thread::lifecycle::spawn_unchecked<<servo_media_audio::context::AudioContext>::new<servo_media_gstreamer::GStreamerBackend>::{closure#0},"
+      ],
+      "issue": "https://github.com/servo/servo/issues/36850"
+    }
+  ]
 }
-
