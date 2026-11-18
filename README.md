@@ -54,6 +54,11 @@ servo-fuzzing setup-generators
 ```
 New panic inputs are saved to `target/panic-corpus/`, with per-round reports in `target/campaign/`.
 
+When the campaign finds new panics, `fuzz-continuous.sh` packages `target/panic-corpus/`
+into `target/new-panic-corpus.tar.gz`, uploads it to the `incoming` release and triggers
+the **Ingest, Triage & Deduplicate Crashes** workflow. Set `SKIP_UPLOAD=1` to stop after
+the campaign and keep the archive local.
+
 ### 4. Triage & Upload Found Crash HTMLs
 You can triage and minimize a directory or archive of raw crash HTMLs locally or via GitHub Actions:
 
@@ -70,7 +75,7 @@ You can triage and minimize a directory or archive of raw crash HTMLs locally or
   1. Archive your crash HTMLs (`tar -czf crashes.tar.gz crashes/`).
   2. Open an issue on GitHub, drag-and-drop `crashes.tar.gz` into the issue body, and add the `fuzz-import` label (or comment `/triage`).
   3. Or upload to a GitHub Release (`incoming`) / run **Ingest, Triage & Deduplicate Crashes** (`workflow_dispatch`).
-  4. CI deduplicates, minimizes, links existing open/closed Servo issues, flags historical regressions, and uploads the result as the `triage-reports` and `new-panic-corpus` artifacts.
+  4. CI deduplicates, minimizes, links existing open/closed Servo issues, flags historical regressions, uploads the `triage-reports` and `new-panic-corpus` artifacts, and opens a pull request adding the minimized reproducers and their draft signatures to `testcases/corpus/`.
 
 ---
 

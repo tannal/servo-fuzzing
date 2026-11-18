@@ -46,7 +46,8 @@ on:
     types: [created]
 
 permissions:
-  contents: read
+  contents: write
+  pull-requests: write
   issues: write
 
 jobs:
@@ -154,7 +155,7 @@ jobs:
           servo-fuzzing import target/import \
             --binary ./servo/servoshell \
             --signatures signatures/rust-panic.json \
-            --corpus target/panic-corpus \
+            --corpus testcases/corpus \
             --output target/triage \
             --timeout "$TIMEOUT_VAL" \
             --jobs "$JOBS_VAL" \
@@ -189,8 +190,8 @@ jobs:
       - name: Package Minimized Reproducers
         if: always()
         run: |
-          if [ -d target/panic-corpus ] && find target/panic-corpus -name '*.html' -print -quit | grep -q .; then
-            tar -czf target/new-panic-corpus.tar.gz -C target/panic-corpus .
+          if [ -d testcases/corpus ] && find testcases/corpus -name '*.html' -print -quit | grep -q .; then
+            tar -czf target/new-panic-corpus.tar.gz -C testcases/corpus .
           fi
 
       - name: Upload Minimized Reproducers
@@ -200,3 +201,24 @@ jobs:
           name: new-panic-corpus
           path: target/new-panic-corpus.tar.gz
           if-no-files-found: ignore
+
+      - name: Open Minimized Corpus Pull Request
+        if: always()
+        uses: peter-evans/create-pull-request@v8
+        continue-on-error: true
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          base: main
+          draft: false
+          add-paths: |
+            testcases/corpus/
+          commit-message: "feat(corpus): triage, deduplicate and add minimized reproducers"
+          title: "feat(corpus): triage and add minimized reproducers (run ${{ github.run_id }})"
+          body: |
+            Automated crash import, triage, and deduplication:
+            - Filtered out non-crashing tests, timeouts, and duplicate panics
+            - Auto-minimized unique reproducers via delta debugging into `testcases/corpus/`
+
+            Workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          branch: automated/import-crashes-${{ github.run_id }}
+          delete-branch: true
