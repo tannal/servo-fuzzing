@@ -29,7 +29,7 @@ from .reducer import reduce_delta_lines, reduce_with_lithium
 from .reporter import make_signature_draft
 from .reproduce import estimate_reproducibility, parallelize_test, repeat_test
 from .runner import get_servo_version, main as runner_main
-from .signatures import load_signatures, save_signatures, sync_draft_signatures
+from .signatures import load_signatures, prune_fixed_corpus, save_signatures, sync_draft_signatures
 
 
 def cmd_run(args: argparse.Namespace) -> int:
@@ -349,6 +349,19 @@ def cmd_sync_issues(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_prune_corpus(args: argparse.Namespace) -> int:
+    removed = prune_fixed_corpus(
+        corpus_dir=Path(args.corpus),
+        history_path=Path(args.history),
+        dry_run=args.dry_run,
+    )
+    verb = "Would remove" if args.dry_run else "Removed"
+    for path in removed:
+        print(f"{verb} {path}")
+    print(f"{verb} {len(removed)} corpus entr{'y' if len(removed) == 1 else 'ies'}")
+    return 0
+
+
 def cmd_sync_drafts(args: argparse.Namespace) -> int:
     added = sync_draft_signatures(
         triage_dir=Path(args.triage_dir),
@@ -543,6 +556,19 @@ def main(argv: Optional[list[str]] = None) -> int:
     p_sync.add_argument("--token", help="GitHub Personal Access Token")
     p_sync.add_argument("--dry-run", action="store_true", help="Print changes without modifying files")
     p_sync.set_defaults(func=cmd_sync_issues)
+
+    p_prune = subparsers.add_parser(
+        "prune-corpus",
+        help="Delete reproducers whose issue is closed upstream",
+    )
+    p_prune.add_argument("--corpus", default="testcases/corpus", help="Corpus directory to prune")
+    p_prune.add_argument(
+        "--history",
+        default="signatures/fixed-history.json",
+        help="Signatures of closed issues; matching corpus entries are removed",
+    )
+    p_prune.add_argument("--dry-run", action="store_true", help="List what would be removed without deleting")
+    p_prune.set_defaults(func=cmd_prune_corpus)
 
     p_sync_drafts = subparsers.add_parser("sync-drafts", help="Deduplicate and append new draft signatures from triage")
     p_sync_drafts.add_argument("--triage-dir", required=True, help="Path to triage directory (e.g. target/triage)")

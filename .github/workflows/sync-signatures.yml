@@ -41,6 +41,14 @@ jobs:
           servo-fuzzing validate-signatures --signatures signatures/rust-panic.json
           servo-fuzzing validate-signatures --signatures signatures/fixed-history.json
 
+      # A closed issue means the panic is fixed upstream, so its reproducer is
+      # no longer evidence of a live bug.
+      - name: Prune reproducers of fixed issues
+        run: |
+          servo-fuzzing prune-corpus \
+            --corpus testcases/corpus \
+            --history signatures/fixed-history.json
+
       - name: Create Pull Request on Changes
         id: signature-pr
         uses: peter-evans/create-pull-request@v8
@@ -52,11 +60,14 @@ jobs:
           add-paths: |
             signatures/rust-panic.json
             signatures/fixed-history.json
+            testcases/corpus/
           commit-message: "chore(signatures): sync B-fuzzing issues from servo/servo"
           title: "chore: update known fuzzing panic signatures"
           body: |
             Both signature files regenerated from the issues labelled `B-fuzzing` in `servo/servo`:
             open issues in `signatures/rust-panic.json`, closed issues in `signatures/fixed-history.json`.
+
+            Reproducers in `testcases/corpus/` whose issue is now closed upstream were removed.
 
             Source run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           branch: "automated/sync-fuzzing-signatures"
