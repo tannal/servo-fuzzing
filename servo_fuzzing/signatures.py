@@ -173,6 +173,47 @@ def default_drafts_path(triage_dir: Path) -> Path:
     return Path(triage_dir) / "draft-signatures.json"
 
 
+def prune_fixed_corpus(
+    corpus_dir: str | Path,
+    history_path: str | Path,
+    *,
+    dry_run: bool = False,
+) -> list[Path]:
+    """Delete corpus entries whose issue is closed upstream.
+
+    `history_path` holds one signature per closed issue, so a reproducer named after
+    one of those ids is no longer evidence of a live bug. Both corpus layouts are
+    handled: `<id>.html` / `<id>.json` from `import` and `<id>/` from `collect`.
+    Directories left empty are removed as well.
+    """
+    corpus = Path(corpus_dir)
+    if not corpus.is_dir():
+        return []
+
+    history = Path(history_path)
+    fixed_ids = {signature["id"] for signature in load_signatures(history)} if history.is_file() else set()
+
+    removed: list[Path] = []
+    for sig_id in sorted(fixed_ids):
+        for candidate in (corpus / f"{sig_id}.html", corpus / f"{sig_id}.json", corpus / sig_id):
+            if not candidate.exists():
+                continue
+            removed.append(candidate)
+            if dry_run:
+                continue
+            if candidate.is_dir():
+                shutil.rmtree(candidate)
+            else:
+                candidate.unlink()
+
+    if not dry_run:
+        for leftover in sorted(corpus.iterdir()):
+            if leftover.is_dir() and not any(leftover.iterdir()):
+                leftover.rmdir()
+
+    return removed
+
+
 def sync_draft_signatures(
     triage_dir: Path,
     signatures_path: Path,
