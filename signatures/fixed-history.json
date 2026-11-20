@@ -1471,6 +1471,16 @@
       "source_file": "components/script/dom/console.rs",
       "stack_frames": [],
       "issue": "https://github.com/servo/servo/issues/49522"
+    },
+    {
+      "id": "issue-49996",
+      "message": "Not a block formattign context",
+      "source_file": "components/layout/formatting_contexts.rs",
+      "stack_frames": [
+        "<layout::formatting_contexts::IndependentFormattingContext>::layout_without_caching",
+        "<layout::formatting_contexts::IndependentFormattingContext>::layout_and_is_cached"
+      ],
+      "issue": "https://github.com/servo/servo/issues/49996"
     }
   ]
 }
