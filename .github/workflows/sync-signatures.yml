@@ -27,8 +27,7 @@ jobs:
 
       - name: Sync Signatures from servo/servo
         env:
-          GITHUB_TOKEN: ""
-          GH_TOKEN: ""
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           servo-fuzzing sync-issues \
             --signatures signatures/rust-panic.json \

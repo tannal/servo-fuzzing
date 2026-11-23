@@ -1,0 +1,99 @@
+name: File Upstream Issues & Update Signatures
+
+# Reusable workflow called after `servo-fuzzing propose`.
+# It files issues in `vars.UPSTREAM_ISSUE_REPO` (or the current repository by
+# default) and opens a PR updating `signatures/rust-panic.json` and
+# `signatures/fixed-history.json` (no corpus testcases committed).
+on:
+  workflow_call:
+    inputs:
+      artifact:
+        description: 'Artifact holding crash proposals & evidence packs'
+        type: string
+        default: panic-proposals
+      dry_run:
+        description: 'Preview issue filing without creating upstream issues or PRs'
+        type: boolean
+        default: false
+    secrets:
+      UPSTREAM_ISSUE_TOKEN:
+        description: 'Optional token with issues:write on vars.UPSTREAM_ISSUE_REPO for cross-repo issue filing'
+        required: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  report:
+    name: File Upstream Issues & Update Signatures
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          ref: main
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+
+      - name: Install servo-fuzzing
+        run: pip install -e .
+
+      - name: Download Proposals
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ inputs.artifact }}
+          path: ${{ runner.temp }}/proposals
+
+      - name: File Issues & Update Signature History
+        env:
+          UPSTREAM_ISSUE_TOKEN: ${{ secrets.UPSTREAM_ISSUE_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TARGET_REPO: ${{ vars.UPSTREAM_ISSUE_REPO || github.repository }}
+          THIS_REPO: ${{ github.repository }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          PROPOSALS_DIR: ${{ runner.temp }}/proposals
+        run: |
+          set -euo pipefail
+          EXTRA_ARGS=""
+          if [ "$DRY_RUN" = "true" ]; then
+            EXTRA_ARGS="--dry-run"
+          elif [ "$TARGET_REPO" != "$THIS_REPO" ] && [ -z "${UPSTREAM_ISSUE_TOKEN:-}" ]; then
+            echo "::warning::UPSTREAM_ISSUE_TOKEN is not set for cross-repo filing to $TARGET_REPO; running --dry-run."
+            EXTRA_ARGS="--dry-run"
+          fi
+
+          TOKEN_VAL="${UPSTREAM_ISSUE_TOKEN:-$GITHUB_TOKEN}"
+          servo-fuzzing file-issues \
+            --proposals "$PROPOSALS_DIR" \
+            --repo "$TARGET_REPO" \
+            --signatures signatures/rust-panic.json \
+            --history signatures/fixed-history.json \
+            --token "$TOKEN_VAL" \
+            --summary "$GITHUB_STEP_SUMMARY" \
+            $EXTRA_ARGS
+
+      - name: Open Pull Request for Updated Signatures
+        uses: peter-evans/create-pull-request@v8
+        continue-on-error: true
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          base: main
+          draft: false
+          add-paths: |
+            signatures/rust-panic.json
+            signatures/fixed-history.json
+          commit-message: "chore(signatures): track newly reported fuzzing panics"
+          title: "chore: update panic signatures for newly filed issues (run ${{ github.run_id }})"
+          body: |
+            Automated signature update after filing/linking new upstream panic issues:
+            - Updated `signatures/rust-panic.json` (and `signatures/fixed-history.json` on regressions)
+            - No testcase HTML files are committed; reproducers stay attached to the issues and run artifacts.
+
+            Source run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          branch: "automated/report-new-panics-${{ github.run_id }}"
+          delete-branch: true

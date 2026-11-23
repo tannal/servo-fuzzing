@@ -46,25 +46,73 @@ jobs:
           servo-fuzzing validate-signatures --signatures signatures/rust-panic.json
           servo-fuzzing validate-signatures --signatures signatures/fixed-history.json
 
-      - name: Sync B-fuzzing issues from servo/servo
+  bundle-replay:
+    name: Replay 1200-Testcase Bundle
+    if: github.event_name == 'pull_request' || github.event_name == 'merge_group' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout servo-fuzzing
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+
+      - name: Install servo-fuzzing
+        run: pip install -e .
+
+      - name: Install Servoshell Runtime Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgstreamer1.0-0 \
+            libgstreamer-plugins-base1.0-0 \
+            libgstreamer-plugins-bad1.0-0 \
+            gstreamer1.0-plugins-base \
+            gstreamer1.0-plugins-good \
+            gstreamer1.0-plugins-bad \
+            gstreamer1.0-gl \
+            libxkbcommon0
+
+      - name: Download latest Servoshell nightly
+        run: ./download-latest-nightly.sh
+
+      - name: Replay Bundle (Stdlib Runner Contract)
         env:
-          GITHUB_TOKEN: ${{ github.token }}
+          BUNDLE_VERSION: ${{ vars.BUNDLE_VERSION || 'latest' }}
+          REPLAY_TIMEOUTS: ${{ vars.REPLAY_TIMEOUTS || 'exclude' }}
         run: |
-          servo-fuzzing sync-issues \
+          python -m servo_fuzzing.runner \
+            --binary ./servo/servoshell \
+            --bundle "$BUNDLE_VERSION" \
             --signatures signatures/rust-panic.json \
-            --history signatures/fixed-history.json \
-            --repo servo/servo
+            --timeouts "$REPLAY_TIMEOUTS" \
+            --jobs 4 \
+            --timeout 2.0 \
+            --output target/fuzzing
 
-      - name: Validate synchronized signatures
+      - name: Publish Replay Summary
+        if: always()
         run: |
-          servo-fuzzing validate-signatures --signatures signatures/rust-panic.json
-          servo-fuzzing validate-signatures --signatures signatures/fixed-history.json
+          if [ -f target/fuzzing/report.md ]; then
+            cat target/fuzzing/report.md >> "$GITHUB_STEP_SUMMARY"
+          fi
 
-  # Generated testcases are random, so new upstream panics would fail unrelated PRs.
+      - name: Upload Replay Artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: bundle-replay-artifacts
+          path: target/fuzzing/
+
+  # Generated testcases are random, so scheduled discovery runs separately from PR gating.
   fuzzing:
     name: Headless DOM Fuzzing
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    outputs:
+      proposals: ${{ steps.propose.outputs.found }}
     steps:
       - name: Checkout servo/fuzzing
         uses: actions/checkout@v7
@@ -76,7 +124,7 @@ jobs:
 
       - name: Install servo-fuzzing
         run: |
-          pip install -e .
+          pip install -e .[generators]
 
       - name: Cache DOM Generators
         uses: actions/cache@v6
@@ -114,14 +162,48 @@ jobs:
             --binary ./servo/servoshell \
             --config configs/ci.json \
             --signatures signatures/rust-panic.json \
-            --output target/fuzzing
+            --output target/fuzzing || true
 
-      - name: Collect New Panic Corpus
+      - name: Deduplicate and Minimize New Panics
         if: always()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if [ -f target/fuzzing/summary.json ]; then
-            python -m servo_fuzzing.collect --input target/fuzzing --output target/panic-corpus
+          if [ -d target/fuzzing/new_crashes ]; then
+            servo-fuzzing sync-drafts \
+              --triage-dir target/fuzzing \
+              --signatures signatures/rust-panic.json \
+              --drafts target/fuzzing/draft-signatures.json \
+              --corpus target/panic-corpus \
+              --reduce-binary ./servo/servoshell \
+              --reduce-timeout 2.0 \
+              --lookup-github
           fi
+
+      - name: Draft Evidence Packs & Proposals for New Panics
+        id: propose
+        if: always() && hashFiles('target/fuzzing/draft-signatures.json') != ''
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TARGET_REPO: ${{ vars.UPSTREAM_ISSUE_REPO || github.repository }}
+        run: |
+          servo-fuzzing propose \
+            --drafts target/fuzzing/draft-signatures.json \
+            --corpus target/panic-corpus \
+            --binary ./servo/servoshell \
+            --output target/proposals \
+            --repo "$TARGET_REPO" \
+            --bisect
+          if [ -f "target/proposals/proposals.json" ]; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload Panic Proposals
+        if: always() && steps.propose.outputs.found == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: panic-proposals
+          path: target/proposals
 
       - name: Package New Panic Corpus
         if: always()
@@ -142,7 +224,7 @@ jobs:
         if: always()
         run: |
           if [ -f target/fuzzing/report.md ]; then
-            cat target/fuzzing/report.md >> $GITHUB_STEP_SUMMARY
+            cat target/fuzzing/report.md >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - name: Upload Artifacts
@@ -151,3 +233,16 @@ jobs:
         with:
           name: fuzzing-artifacts
           path: target/fuzzing/
+
+  report-new-panics:
+    name: File Upstream Issues & Update Signatures
+    needs: fuzzing
+    if: ${{ !cancelled() && needs.fuzzing.outputs.proposals == 'true' }}
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    uses: ./.github/workflows/report-new-panics.yml
+    with:
+      artifact: panic-proposals
+    secrets: inherit

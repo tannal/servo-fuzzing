@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 from typing import Any, Optional
 
-from .executor import TestResult, TestStatus, run_single_test, run_suite
+from .executor import DEFAULT_SERVO_ARGS, TestResult, TestStatus, run_single_test, run_suite
 from .reporter import print_cli_summary, write_artifacts
 from .signatures import default_fixed_history_path, load_signatures
 
@@ -83,6 +83,12 @@ def parse_args(args: Optional[list[str]] = None) -> argparse.Namespace:
     parser.add_argument("--testcases", nargs="*", default=None, help="Direct testcase directories or HTML files")
     parser.add_argument("--bundle", default=None, help="Path or URL to testcase bundle (.tar.gz)")
     parser.add_argument("--force-download", action="store_true", help="Force re-downloading bundle")
+    parser.add_argument(
+        "--timeouts",
+        choices=["include", "exclude"],
+        default="include",
+        help="Include or exclude testcases marked as timeouts in a bundle manifest (default: include)",
+    )
     parser.add_argument("-j", "--jobs", type=int, default=None, help="Number of parallel workers")
     parser.add_argument("--timeout", type=float, default=None, help="Timeout in seconds per test")
     parser.add_argument("--generate", action="store_true", help="Generate fresh testcases before running")
@@ -146,7 +152,7 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     timeout = args.timeout if args.timeout is not None else float(config.get("timeout_seconds", 5.0))
     concurrency = args.jobs if args.jobs is not None else int(config.get("concurrency", 4))
-    servo_args = config.get("servo_args", ["-xfz", "--enable-experimental-web-platform-features"])
+    servo_args = config.get("servo_args", list(DEFAULT_SERVO_ARGS))
 
     test_dirs: list[str | Path] = []
     if args.positional_testcases:
@@ -161,12 +167,13 @@ def main(argv: Optional[list[str]] = None) -> int:
     if not test_dirs and not bundle_spec:
         test_dirs.extend(config.get("test_dirs", []))
 
+    excluded_timeout_paths: set[Path] = set()
     # Without explicit testcases, replay a bundle; a generating run only does so when asked.
     if not test_dirs and not bundle_spec and not generate:
         print("No testcases specified. Resolving the latest bundle from GitHub Releases...")
         bundle_spec = "latest"
     if not test_dirs and bundle_spec:
-        from .bundle import obtain_bundle, unpack_bundle
+        from .bundle import obtain_bundle, read_bundle_manifest, unpack_bundle
 
         bundle_tar = obtain_bundle(bundle_spec=bundle_spec, force_download=args.force_download)
         if not bundle_tar:
@@ -175,6 +182,16 @@ def main(argv: Optional[list[str]] = None) -> int:
         bundle_target = output_dir / "bundle"
         unpack_bundle(bundle_tar=bundle_tar, target_dir=bundle_target, clean_target=True)
         test_dirs.append(bundle_target)
+        manifest = read_bundle_manifest(bundle_target)
+        if manifest:
+            print(
+                f"Bundle manifest: version={manifest.get('version', 'unknown')} "
+                f"timeouts={manifest.get('timeouts', 'unknown')} "
+                f"total={manifest.get('total_tests', 'unknown')}"
+            )
+            if args.timeouts == "exclude":
+                timeout_entries = manifest.get("timeout_tests") or []
+                excluded_timeout_paths = {(bundle_target / rel).resolve() for rel in timeout_entries}
 
     extensions = config.get("test_extensions", [".html", ".htm"])
 
@@ -196,6 +213,12 @@ def main(argv: Optional[list[str]] = None) -> int:
         test_dirs.append(gen_out)
 
     testcases = collect_testcases(test_dirs, extensions)
+    if excluded_timeout_paths:
+        before_filter = len(testcases)
+        testcases = [tc for tc in testcases if tc not in excluded_timeout_paths]
+        skipped = before_filter - len(testcases)
+        if skipped:
+            print(f"Excluded {skipped} bundled timeout testcase(s) via --timeouts exclude.")
     print(f"Found {len(testcases)} test cases to execute.")
 
     if not testcases:

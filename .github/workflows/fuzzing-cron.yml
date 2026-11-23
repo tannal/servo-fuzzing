@@ -5,6 +5,11 @@ on:
     - cron: '0 0 * * 0'
   workflow_dispatch:
     inputs:
+      per_generator:
+        description: 'Testcases per generator in the published bundle (default: 400 -> 1200 total)'
+        required: false
+        default: '400'
+        type: string
       bundle_timeouts:
         description: 'Timed-out testcases in the published bundle (default: BUNDLE_TIMEOUTS repo variable, else exclude)'
         type: choice
@@ -13,14 +18,33 @@ on:
           - default
           - exclude
           - include
+      max_timeout_tests:
+        description: 'With timeouts=include: max timeout testcases in the bundle'
+        required: false
+        default: '150'
+        type: string
+      bundle_version:
+        description: 'Explicit bundle version tag (default: bundle-YYYY-MM-DD)'
+        required: false
+        default: ''
+        type: string
+      dry_run_issues:
+        description: 'Preview upstream issue filing without creating issues or PRs'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
+  pull-requests: write
+  issues: write
 
 jobs:
   campaign:
     name: Generate, Triage & Publish Bundle
     runs-on: ubuntu-latest
+    outputs:
+      proposals: ${{ steps.propose.outputs.found }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -64,8 +88,19 @@ jobs:
       - name: Setup DOM Generators
         run: servo-fuzzing setup-generators
 
-      - name: Run Discovery & Exploration (Generate fresh test cases)
-        run: servo-fuzzing generate -n 100 -o target/generated
+      - name: Run Discovery & Exploration (Generate test cases)
+        env:
+          INPUT_PER_GEN: ${{ inputs.per_generator || '400' }}
+          BUNDLE_TIMEOUTS: ${{ (inputs.bundle_timeouts != 'default' && inputs.bundle_timeouts) || vars.BUNDLE_TIMEOUTS || 'exclude' }}
+        run: |
+          PER_GEN="$INPUT_PER_GEN"
+          if [ "$BUNDLE_TIMEOUTS" = "exclude" ]; then
+            GEN_COUNT=$((PER_GEN * 3 / 2))
+          else
+            GEN_COUNT="$PER_GEN"
+          fi
+          echo "Generating $GEN_COUNT testcases per generator (target bundle quota: $PER_GEN x 3, timeouts=$BUNDLE_TIMEOUTS)..."
+          servo-fuzzing generate -n "$GEN_COUNT" -o target/generated
 
       - name: Triage Generated Testcases
         run: |
@@ -77,6 +112,8 @@ jobs:
             --timeout 2.0 || true
 
       - name: Deduplicate and Minimize New Panics
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if [ -d "target/triage/new_crashes" ]; then
             servo-fuzzing sync-drafts \
@@ -85,8 +122,34 @@ jobs:
               --drafts target/triage/draft-signatures.json \
               --corpus target/panic-corpus \
               --reduce-binary ./servo/servoshell \
-              --reduce-timeout 2.0
+              --reduce-timeout 2.0 \
+              --lookup-github
           fi
+
+      - name: Draft Evidence Packs & Proposals for New Panics
+        id: propose
+        if: hashFiles('target/triage/draft-signatures.json') != ''
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TARGET_REPO: ${{ vars.UPSTREAM_ISSUE_REPO || github.repository }}
+        run: |
+          servo-fuzzing propose \
+            --drafts target/triage/draft-signatures.json \
+            --corpus target/panic-corpus \
+            --binary ./servo/servoshell \
+            --output target/proposals \
+            --repo "$TARGET_REPO" \
+            --bisect
+          if [ -f "target/proposals/proposals.json" ]; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload Panic Proposals
+        if: steps.propose.outputs.found == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: panic-proposals
+          path: target/proposals
 
       - name: Package New Panic Corpus
         if: always()
@@ -104,19 +167,62 @@ jobs:
           path: target/new-panic-corpus.tar.gz
           if-no-files-found: ignore
 
-      - name: Pack Clean Active Bundle
+      - name: Pack Versioned Balanced Bundle
+        id: pack-bundle
         env:
+          INPUT_PER_GEN: ${{ inputs.per_generator || '400' }}
           BUNDLE_TIMEOUTS: ${{ (inputs.bundle_timeouts != 'default' && inputs.bundle_timeouts) || vars.BUNDLE_TIMEOUTS || 'exclude' }}
+          MAX_TIMEOUTS: ${{ inputs.max_timeout_tests || '150' }}
+          EXPLICIT_VERSION: ${{ inputs.bundle_version || '' }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          PER_GEN="$INPUT_PER_GEN"
+          MAX_TESTS=$((PER_GEN * 3))
+          SERVO_VER="$(./servo/servoshell --version 2>/dev/null || echo unknown)"
+
+          if [ -n "$EXPLICIT_VERSION" ]; then
+            TAG="$EXPLICIT_VERSION"
+          else
+            BASE="bundle-$(date -u +%Y-%m-%d)"
+            TAG="$BASE"
+            IDX=2
+            while gh release view "$TAG" >/dev/null 2>&1; do
+              TAG="${BASE}.${IDX}"
+              IDX=$((IDX + 1))
+            done
+          fi
+
+          VER="${TAG#bundle-}"
+          VERSIONED_TAR="target/fuzz-bundle-${VER}.tar.gz"
+          LATEST_TAR="target/fuzz-bundle-latest.tar.gz"
+
           servo-fuzzing bundle pack \
             --source target/generated \
-            --output target/fuzz-bundle-latest.tar.gz \
+            --output "$VERSIONED_TAR" \
             --from-triage target/triage \
             --binary ./servo/servoshell \
             --jobs 4 \
             --timeout 2.0 \
             --timeouts "$BUNDLE_TIMEOUTS" \
-            --max-tests 300
+            --max-timeout-tests "$MAX_TIMEOUTS" \
+            --per-generator "$PER_GEN" \
+            --max-tests "$MAX_TESTS" \
+            --version "$TAG" \
+            --servo-version "$SERVO_VER"
+
+          cp "$VERSIONED_TAR" "$LATEST_TAR"
+          tar -xzf "$VERSIONED_TAR" -C target manifest.json
+
+          echo "bundle_tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "versioned_tar=$VERSIONED_TAR" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Published Bundle: \`$TAG\`"
+            echo ""
+            echo "- Target quota: $PER_GEN per generator ($MAX_TESTS total), timeouts: \`$BUNDLE_TIMEOUTS\`"
+            echo '```json'
+            cat target/manifest.json
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload Bundle Artifact
         uses: actions/upload-artifact@v7
@@ -124,24 +230,37 @@ jobs:
           name: fuzz-bundle-latest
           path: target/fuzz-bundle-latest.tar.gz
 
-      - name: Publish Latest Bundle & Panic Corpus to GitHub Releases
+      - name: Publish Versioned & Latest Releases
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BUNDLE_TAG: ${{ steps.pack-bundle.outputs.bundle_tag }}
+          VERSIONED_TAR: ${{ steps.pack-bundle.outputs.versioned_tar }}
         run: |
-          ASSETS="target/fuzz-bundle-latest.tar.gz"
+          ASSETS="$VERSIONED_TAR target/fuzz-bundle-latest.tar.gz target/manifest.json"
           if [ -f target/new-panic-corpus.tar.gz ]; then
             ASSETS="$ASSETS target/new-panic-corpus.tar.gz"
           fi
-          gh release upload latest $ASSETS --clobber || \
-          gh release create latest $ASSETS \
+          gh release upload "$BUNDLE_TAG" $ASSETS --clobber || \
+          gh release create "$BUNDLE_TAG" $ASSETS \
+            --latest \
+            --title "Fuzzing Bundle $BUNDLE_TAG" \
+            --notes "Balanced fuzzing bundle ($BUNDLE_TAG) generated from domato, freedom, and minerva."
+
+          # Keep the rolling `latest` tag updated for compatibility
+          LATEST_ASSETS="target/fuzz-bundle-latest.tar.gz target/manifest.json"
+          if [ -f target/new-panic-corpus.tar.gz ]; then
+            LATEST_ASSETS="$LATEST_ASSETS target/new-panic-corpus.tar.gz"
+          fi
+          gh release upload latest $LATEST_ASSETS --clobber || \
+          gh release create latest $LATEST_ASSETS \
             --title "Latest Fuzzing Bundle & Panic Corpus" \
-            --notes "Automated clean fuzzing bundle for PR CI and latest panic reproducers corpus."
+            --notes "Rolling pointer to $BUNDLE_TAG." || true
 
       - name: Publish Step Summary
         if: always()
         run: |
           if [ -f "target/triage/report.md" ]; then
-            cat target/triage/report.md >> $GITHUB_STEP_SUMMARY
+            cat target/triage/report.md >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - name: Upload Triage Reports & Reproductions
@@ -150,3 +269,13 @@ jobs:
         with:
           name: triage-reports
           path: target/triage
+
+  report-new-panics:
+    name: File Upstream Issues & Update Signatures
+    needs: campaign
+    if: ${{ !cancelled() && needs.campaign.outputs.proposals == 'true' }}
+    uses: ./.github/workflows/report-new-panics.yml
+    with:
+      artifact: panic-proposals
+      dry_run: ${{ inputs.dry_run_issues == true }}
+    secrets: inherit

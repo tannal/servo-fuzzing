@@ -14,6 +14,8 @@ from typing import Callable, Optional
 from .parser import CrashInfo, parse_crash
 from .signatures import CrashSignature, match
 
+DEFAULT_SERVO_ARGS: list[str] = ["-xfz", "--enable-experimental-web-platform-features"]
+
 
 class TestStatus(str, Enum):
     PASS = "PASS"

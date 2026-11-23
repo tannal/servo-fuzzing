@@ -5,8 +5,11 @@ import shutil
 from pathlib import Path
 from typing import Any
 
-from .executor import SuiteSummary, TestResult, TestStatus
+from .executor import DEFAULT_SERVO_ARGS, SuiteSummary, TestResult, TestStatus
 from .parser import CrashInfo, generate_descriptive_name, normalize_panic_message, normalize_source_path
+
+PLACEHOLDER_FRAME = "<fill_in_distinctive_frame>"
+_DEFAULT_CMD_ARGS = " ".join(DEFAULT_SERVO_ARGS)
 
 
 def make_signature_draft(crash: CrashInfo, issue_url: str = "https://github.com/servo/servo/issues/TODO") -> dict[str, Any]:
@@ -23,12 +26,12 @@ def make_signature_draft(crash: CrashInfo, issue_url: str = "https://github.com/
         "id": sig_id,
         "message": crash.message,
         "source_file": crash.source_file,
-        "stack_frames": frames if frames else ["<fill_in_distinctive_frame>"],
+        "stack_frames": frames if frames else [PLACEHOLDER_FRAME],
         "issue": issue_url,
     }
 
 
-def make_github_issue_draft(result: TestResult, servo_version: str = "latest", cmd_args: str = "-xfz") -> str:
+def make_github_issue_draft(result: TestResult, servo_version: str = "latest", cmd_args: str = _DEFAULT_CMD_ARGS) -> str:
     crash = result.crash_info
     if crash:
         loc = f"at {crash.source_file}" + (f":{crash.line}" if crash.line else "")

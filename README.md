@@ -1,391 +1,254 @@
 # Servo Fuzzing
 
-Automated DOM fuzzing test suite and crash triage harness for the [Servo](https://github.com/servo/servo) browser engine.
+Automated DOM fuzzing, bundle replay, crash triage, bisection, and upstream issue management harness for the [Servo](https://github.com/servo/servo) browser engine.
 
-This repository serves as a specialized test suite for Servo—analogous to Web Platform Tests (WPT)—designed to run continuous fuzzing test cases during merge jobs, PR gating, and local development.
+The project serves two core goals:
 
----
-
-## Architecture & CI Integration
-
-### How It Works in Servo CI
-
-Servo integrates this repository directly into `./mach test-fuzzing` and GitHub Actions merge queue / PR workflows.
-
-### PR Gating Philosophy
-
-1. **Amortizing Fuzzing**: Rather than running infinite standalone fuzzing campaigns, running 100 testcases per generator on every merge amortizes long-running fuzzing over time within a manageable CI budget.
-2. **Known Issues Do Not Block**: If an existing, already-tracked crash is reproduced, it is matched against `signatures/rust-panic.json` and ignored. The test run passes.
-3. **New Panics Block the PR**: If a crash occurs that does not match any known signature, `./mach test-fuzzing` exits with code `1`, blocking the PR from merging.
-4. **PR Author Triage**:
-   - The author checks `target/fuzzing/report.md` or the CI step summary.
-   - **If the crash is caused by the PR**: The author investigates and fixes the regression.
-   - **If the crash is an unrelated pre-existing bug**: The author files a GitHub issue labelled `B-fuzzing` and `I-panic` (using the ready-to-use markdown report in `target/fuzzing/new_crashes/`), and triggers CI again once the next upstream sync has imported the issue into `signatures/rust-panic.json`.
+1. **Deterministic PR Gating in `servo/servo`**: Replay pinned, versioned **1,200-testcase** bundles via `./mach test-fuzzing` (`python3 -m servo_fuzzing.runner`, standard-library-only) against `signatures/rust-panic.json` (open upstream issues ignored) and `signatures/fixed-history.json` (closed upstream issues flagged as regressions).
+2. **Amortized Discovery & Upstream Reporting**: Run scheduled DOM fuzzing (`domato`, `freedom`, `minerva`), self-hosted campaigns (`./fuzz-continuous.sh`), and raw crash imports; automatically deduplicate, minimize via delta debugging, bisect across Servo nightlies, build structured evidence packs, file upstream GitHub issues directly, and update signature history without committing HTML testcases into git.
 
 ---
 
-## Quick Start for New Developers (After Building Servo)
+## Quick Start
 
-Once you have built `servoshell` locally (e.g. `../servo/target/debug/servoshell` or `release/servoshell`):
+### Install
 
-### 1. Install `servo-fuzzing`
 ```bash
-git clone https://github.com/tannal/servo-fuzzing.git
-cd servo-fuzzing
+# Replay, triage, minimization, bisection, and reporting (no third-party runtime dependencies)
 pip install -e .
+
+# Also enable DOM generators (installs cffi for Minerva)
+pip install -e .[generators]
 ```
 
-### 2. Run `./mach test-fuzzing` (From Servo Checkout)
+On Linux, `servoshell` requires GStreamer and XKB runtime libraries:
+
 ```bash
-# Automatically downloads the latest clean bundle and checks against signatures/
+sudo apt-get install -y \
+  libgstreamer1.0-0 libgstreamer-plugins-base1.0-0 libgstreamer-plugins-bad1.0-0 \
+  gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad \
+  gstreamer1.0-gl libxkbcommon0
+```
+
+Download the latest Linux `servoshell` nightly into `./servo/servoshell`:
+
+```bash
+./download-latest-nightly.sh
+```
+
+### Replay a Bundle Against a Local Servo Build
+
+From a `servo/servo` checkout (uses Mach's Python interpreter and the stdlib-only `servo_fuzzing.runner` entrypoint):
+
+```bash
 ./mach test-fuzzing
-
-# Or specify a custom bundle URL / run:
-./mach test-fuzzing --bundle https://github.com/tannal/servo-fuzzing/releases/latest/download/fuzz-bundle-latest.tar.gz
+./mach test-fuzzing --bundle bundle-2026-11-23
+./mach test-fuzzing --runner ../fuzzing --bundle ../fuzzing/target/fuzz-bundle-latest.tar.gz --jobs 4
 ```
 
-### 3. Run Continuous Self-Hosted Fuzzing (`fuzz-continuous.sh`)
+Directly from this repository:
+
 ```bash
-# Install DOM generators (domato, freedom, minerva)
+python3 -m servo_fuzzing.runner \
+  --binary ./servo/servoshell \
+  --bundle latest \
+  --signatures signatures/rust-panic.json \
+  --timeouts exclude \
+  --jobs 4 \
+  --timeout 2.0
+```
+
+### Continuous Self-Hosted Fuzzing
+
+```bash
+# Clone Domato, Freedom, and Minerva into generators/
 servo-fuzzing setup-generators
 
-# Run continuous generate -> replay -> collect loop against your built servoshell
-./fuzz-continuous.sh --binary ../servo/target/release/servoshell --jobs 4 --count 30
+# Generate, replay, deduplicate into target/panic-corpus/, pack, upload to `incoming`,
+# and trigger import-crashes.yml
+./fuzz-continuous.sh --binary ./servo/servoshell --jobs 4 --count 30
 ```
-New panic inputs are saved to `target/panic-corpus/`, with per-round reports in `target/campaign/`.
 
-### 4. Triage & Upload Found Crash HTMLs
-You can triage and minimize a directory or archive of raw crash HTMLs locally or via GitHub Actions:
+Environment overrides for `fuzz-continuous.sh`:
+- `SKIP_UPLOAD=1`: keep `target/new-panic-corpus.tar.gz` local without uploading.
+- `SERVO_FUZZING_REPO`: target GitHub repository (default: `tannal/servo-fuzzing`).
+- `INCOMING_TAG`: release tag for crash uploads (default: `incoming`).
+
+### Import Raw Crash Archives
 
 - **Local triage & minimization**:
   ```bash
   servo-fuzzing import ./crashes/ \
-    --binary ../servo/target/release/servoshell \
+    --binary ./servo/servoshell \
     --signatures signatures/rust-panic.json \
     --corpus target/panic-corpus \
     --lookup-github
   ```
-  Draft signatures go to `target/triage/draft-signatures.json`; the files in `signatures/` are not modified.
-- **Zero-git CI upload (GitHub Issue / Release / Manual Dispatch)**:
-  1. Archive your crash HTMLs (`tar -czf crashes.tar.gz crashes/`).
-  2. Open an issue on GitHub, drag-and-drop `crashes.tar.gz` into the issue body, and add the `fuzz-import` label (or comment `/triage`).
-  3. Or upload to a GitHub Release (`incoming`) / run **Ingest, Triage & Deduplicate Crashes** (`workflow_dispatch`).
-  4. CI deduplicates, minimizes, links existing open/closed Servo issues, flags historical regressions, and uploads the result as the `triage-reports` and `new-panic-corpus` artifacts.
+- **Zero-git CI upload**:
+  1. Archive raw HTML files (`tar -cJf crashes.tar.xz crashes/`).
+  2. Either drag-and-drop the archive into a GitHub issue with label `fuzz-import` or comment `/triage`, upload it to an `incoming` / `incoming-*` release and dispatch `import-crashes.yml`, or supply `bundle_url` via `workflow_dispatch`.
 
 ---
 
-## Integration with `./mach`
+## Bundles: Refresh, Versioning & Resolution Convention
 
-Run locally:
-```bash
-./mach test-fuzzing --bundle https://github.com/tannal/servo-fuzzing/actions/runs/43194534865
+Every scheduled bundle refresh (`fuzzing-cron.yml`) packs **1,200 testcases** balanced equally across all three DOM generators (**400 x `domato` + 400 x `freedom` + 400 x `minerva`**) and embeds a `manifest.json` metadata file:
+
 ```
+fuzz-bundle-YYYY-MM-DD.tar.gz
+├── manifest.json
+├── domato/fuzz-00001.html        (400 files)
+├── freedom/1-179471886257.html   (400 files)
+└── minerva/0001.html             (400 files)
+```
+
+`manifest.json` records `schema_version`, `version`, `created_at`, `servo_version`, `timeouts` (`exclude` or `include`), `per_generator`, `total_tests`, `generators` (per-generator file counts), and `timeout_tests` (relative paths of included testcases that timed out during bundle creation).
+
+### Spec Resolution (`--bundle SPEC`)
+
+`servo_fuzzing.bundle.resolve_bundle_spec` and `obtain_bundle` resolve bundle specifiers as follows:
+
+| `--bundle SPEC` input | Resolved URL / Path | Cache Behavior |
+|---|---|---|
+| `latest` or `fuzz-bundle-latest.tar.gz` (default) | `releases/latest/download/fuzz-bundle-latest.tar.gz` | Checks server every run; falls back to valid cache offline |
+| `YYYY-MM-DD`, `bundle-YYYY-MM-DD`, `fuzz-bundle-YYYY-MM-DD.tar.gz` (with optional `.2`, `.3` same-day suffix) | `releases/download/bundle-YYYY-MM-DD(.N)/fuzz-bundle-YYYY-MM-DD(.N).tar.gz` | Immutable: reuses cached file unless `--force-download` is passed |
+| `crashes`, `corpus`, `panic-corpus`, `new-panic-corpus` | `releases/latest/download/new-panic-corpus.tar.gz` | Checks server every run |
+| `https://...` URL | Downloaded directly | Immutable if filename matches `fuzz-bundle-YYYY-MM-DD*.tar.gz` |
+| Local `.tar.gz` path | Read directly | No network access |
+
+Override the default bundle repository via `SERVO_FUZZING_REPO`.
+
+### Configurable Timeouts (Packing & Replay)
+
+- **During bundle creation (`servo-fuzzing bundle pack` / `fuzzing-cron.yml`)**:
+  - `--per-generator 400 --max-tests 1200` enforces an equal quota per generator subdirectory.
+  - `--timeouts exclude|include` (default: `exclude`; configured in CI via `vars.BUNDLE_TIMEOUTS` or manual workflow input `bundle_timeouts`): when set to `include`, reserves up to `--max-timeout-tests` slots (default `50` in CLI, `150` in `fuzzing-cron.yml`) distributed across generators and lists them in `manifest.json` `"timeout_tests"`. When set to `exclude`, `fuzzing-cron.yml` oversamples generation (`600 x 3 = 1800`) so the packed bundle reliably fills `400 x 3 = 1200` passing testcases.
+- **During bundle replay (`servo-fuzzing run` / `python3 -m servo_fuzzing.runner`)**:
+  - `--timeouts include|exclude` (default: `include`): when set to `exclude`, skips any testcase listed in `manifest.json` `"timeout_tests"` without spending timeout budget on them (`fuzzing-ci.yml` passes `vars.REPLAY_TIMEOUTS || 'exclude'`).
 
 ---
 
-## Installation & CLI
+## Signatures & Crash Classification
 
-### Installation
+Crashes are parsed by `servo_fuzzing/parser.py` and matched in `servo_fuzzing/executor.py` into three distinct classifications:
 
-```bash
-pip install -e .
+| Status | Source Database | PR CI Behavior | Purpose |
+|---|---|---|---|
+| `KNOWN_CRASH` | `signatures/rust-panic.json` (open `B-fuzzing` issues) | Ignored (exit `0`) | Prevent known pre-existing bugs from blocking unrelated PRs |
+| `REGRESSION` | `signatures/fixed-history.json` (closed `B-fuzzing` issues) | Fails CI (exit `1`) | Catch reappearance of previously fixed bugs and link the closed issue |
+| `NEW_CRASH` | Matches neither database | Fails CI (exit `1`) | Block new regressions; trigger minimization, bisection, and upstream filing in discovery jobs |
+
+### Matching & Normalization
+
+- **Normalized Message** (`normalize_panic_message`): normalizes dynamic numbers (`<NUM>`), dimensions (`<DIM>`), and hex addresses (`0x<HEX>`), and recovers multi-line `assert_eq!` / wrapped `assert!` messages while ignoring CSS/renderer log lines before the panic hook.
+- **Normalized Source File** (`normalize_source_path`): strips line/column numbers, Cargo registry/checkout prefixes, and rustc toolchain prefixes.
+- **Ordered Stack Frames**: each frame in `stack_frames` must appear as a substring in order in the backtrace (an empty list places no frame constraint and matches on message + source file).
+- **Shared Flags**: `DEFAULT_SERVO_ARGS` (`-xfz --enable-experimental-web-platform-features`) is shared across execution, reduction, bisection, and evidence reporting.
+
+---
+
+## Discovery, Minimization, Bisection & Upstream Issue Filing
+
+Discovery and import runs follow one pipeline without storing raw or unfiled HTML reproducers in git:
+
+```
+generate / import
+  └─> run_suite (classify KNOWN_CRASH / REGRESSION / NEW_CRASH)
+        └─> sync-drafts --lookup-github (deduplicate + delta-line minimize -> target/triage/draft-signatures.json & target/panic-corpus/)
+              └─> propose --bisect (verify repro, bisect servo/servo-nightly-builds, score commits -> target/proposals/<id>/)
+                    └─> file-issues (file or link upstream GitHub issue + update rust-panic.json / fixed-history.json)
 ```
 
-### CLI Subcommands
-
-The `servo-fuzzing` CLI provides commands for running, generating, reproducing, and triaging test cases:
+### Local Diagnostic & Filing Commands
 
 ```bash
-# Run the test suite against a servoshell binary
-servo-fuzzing run --binary ./servo/servoshell --config configs/default.json --signatures signatures/rust-panic.json
+# Minimize a crashing HTML file via coarse-to-fine delta line reduction
+servo-fuzzing reduce crash.html \
+  --binary ./servo/servoshell \
+  --pattern "Found hoisted box" \
+  --output reduced.html \
+  --attempts 3
 
-# Validate signature database schema
+# Estimate flakiness of a reproducer
+servo-fuzzing reproduce crash.html \
+  --binary ./servo/servoshell \
+  --pattern "parent_proxy" \
+  --repeat 10 \
+  --parallel 20
+
+# Bisect across prebuilt servo/servo-nightly-builds releases
+servo-fuzzing bisect reduced.html --pattern "Found hoisted box" -o target/bisect.md
+
+# Build a full evidence pack (issue.md, context.json, AGENT.md, analysis.md, signature_draft.json)
+servo-fuzzing report reduced.html \
+  --binary ./servo/servoshell \
+  --pack target/reports/my-crash \
+  --original crash.html \
+  --bisect
+
+# Generate proposals for drafted crashes, then preview upstream filing
+servo-fuzzing propose --binary ./servo/servoshell --bisect
+servo-fuzzing file-issues --repo servo/servo --dry-run
+```
+
+### CI Configuration (Variables & Secrets)
+
+| Name | Kind | Default | Purpose |
+|---|---|---|---|
+| `UPSTREAM_ISSUE_REPO` | Variable | Current repository | Target repo for upstream lookup and issue filing (e.g. `servo/servo`) |
+| `UPSTREAM_ISSUE_TOKEN` | Secret | Empty | GitHub token with issue write permission when `UPSTREAM_ISSUE_REPO` differs from the current repo (automatically runs `--dry-run` if unset) |
+| `BUNDLE_VERSION` | Variable | `latest` | Bundle spec replayed by `fuzzing-ci.yml` on PRs |
+| `BUNDLE_TIMEOUTS` | Variable | `exclude` | Whether `fuzzing-cron.yml` includes (`include`) or excludes (`exclude`) timeouts in published bundles |
+| `REPLAY_TIMEOUTS` | Variable | `exclude` | Whether `fuzzing-ci.yml` PR replay skips (`exclude`) or runs (`include`) manifest `timeout_tests` |
+
+---
+
+## CLI Reference
+
+Entrypoints: `servo-fuzzing <subcommand>`, plus stdlib-compatible module entrypoints `python3 -m servo_fuzzing.runner`, `python3 -m servo_fuzzing.campaign`, and `python3 -m servo_fuzzing.collect`.
+
+| Command | Role |
+|---|---|
+| `run` | Replay testcases or a bundle via `servo_fuzzing.runner` (`--bundle`, `--timeouts include\|exclude`, `--config`, `--testcases`) |
+| `setup-generators` | Clone or check `domato`, `freedom`, and `minerva` in `generators/` |
+| `generate` | Generate HTML testcases (`--tool domato\|freedom\|minerva`, `-n`, `-o`) |
+| `bundle pack\|unpack\|download` | Pack balanced versioned bundles with `manifest.json`, unpack, or download |
+| `import` | Ingest directory or archive (`.tar.*`, `.zip`), triage, deduplicate, minimize, and link upstream issues (`--lookup-github`) |
+| `reduce` | Minimize a reproducer (`--method delta\|lithium`, `--signature`, `--attempts`) |
+| `reproduce` | Estimate crash reproducibility (`--mode estimate\|repeat\|parallel`) |
+| `bisect` | Binary-search `servo/servo-nightly-builds` to find `[last_good..first_bad]` commits |
+| `report` | Generate a single-crash GitHub issue draft or `--pack DIR` evidence bundle |
+| `propose` | Turn `draft-signatures.json` into bisected evidence proposals in `target/proposals/` |
+| `file-issues` | File upstream GitHub issues from proposals and update `rust-panic.json` / `fixed-history.json` |
+| `sync-issues` | Regenerate `signatures/rust-panic.json` (open) and `signatures/fixed-history.json` (closed) from `servo/servo` `B-fuzzing` issues |
+| `sync-drafts` | Deduplicate and minimize `new_crashes/` into `draft-signatures.json` and `target/panic-corpus/` |
+| `add-signature` | Manually append a signature entry to `signatures/rust-panic.json` |
+| `validate-signatures` | Validate schema and uniqueness of signature JSON files |
+
+---
+
+## GitHub Actions Workflows
+
+| Workflow | Trigger | Purpose |
+|---|---|---|
+| [.github/workflows/fuzzing-ci.yml](.github/workflows/fuzzing-ci.yml) | PR, merge queue, daily `02:00 UTC`, manual | Runs deterministic `checks` (pytest, `actionlint`, JSON & signature validation), PR `bundle-replay` against the 1,200-testcase bundle via `servo_fuzzing.runner`, and scheduled `fuzzing` discovery -> `report-new-panics.yml` |
+| [.github/workflows/fuzzing-cron.yml](.github/workflows/fuzzing-cron.yml) | Weekly Sunday `00:00 UTC`, manual | Generates balanced testcases (`600x3` when excluding timeouts, `400x3` when including), triages, proposes & bisects new panics, publishes immutable `bundle-YYYY-MM-DD` (400 x 3 = 1,200 tests + `manifest.json`) + `latest` releases, and triggers `report-new-panics.yml` |
+| [.github/workflows/import-crashes.yml](.github/workflows/import-crashes.yml) | `incoming`/`incoming-*` releases, issue `/triage` or `fuzz-import`, manual | Imports crash archives, deduplicates & minimizes, bisects proposals, comments `report.md` on triggering issues, and triggers `report-new-panics.yml` |
+| [.github/workflows/report-new-panics.yml](.github/workflows/report-new-panics.yml) | `workflow_call` | Least-privilege workflow that runs `file-issues` and opens a signature-only PR updating `signatures/rust-panic.json` and `signatures/fixed-history.json` |
+| [.github/workflows/sync-signatures.yml](.github/workflows/sync-signatures.yml) | Daily `06:00 UTC`, manual | Syncs `rust-panic.json` and `fixed-history.json` from upstream `B-fuzzing` issues and opens a PR on changes |
+
+---
+
+## Development & Testing
+
+```bash
+# Run full unit test suite
+python3 -m unittest discover tests -v
+
+# Validate signature files and runner dry-run
 servo-fuzzing validate-signatures --signatures signatures/rust-panic.json
-
-# Generate test cases using Domato, Freedom, or Minerva
-servo-fuzzing generate --tool domato -n 100 -o target/generated
-servo-fuzzing generate -n 100 -o target/generated  # runs all installed tools
-
-# Reproduce and calculate reproducibility rate for a flaky crash
-servo-fuzzing reproduce testcase.html --binary ./servo/servoshell --pattern "parent_proxy"
-
-# Bisect a crash across nightly builds to find the upstream commit range
-servo-fuzzing bisect testcase.html --pattern "parent_proxy"
-
-# Generate a formatted GitHub issue report from a crash
-servo-fuzzing report testcase.html --binary ./servo/servoshell
-
-# Same, as an evidence pack with the regression range for people and agents
-servo-fuzzing report testcase.html --binary ./servo/servoshell --pack target/reports/crash --bisect
-
-# Regenerate both signature files from the B-fuzzing issues of servo/servo
-servo-fuzzing sync-issues
+servo-fuzzing validate-signatures --signatures signatures/fixed-history.json
+bash -n fuzz-continuous.sh
 ```
 
----
-
-## Signature Database (`signatures/rust-panic.json` & `signatures/fixed-history.json`)
-
-Both files are generated from the [`B-fuzzing`](https://github.com/servo/servo/issues?q=label%3AB-fuzzing) issues of `servo/servo` and are never edited by hand or by a triage run:
-
-- **`signatures/rust-panic.json`**: one signature per **open** issue. Matches are classified as `KNOWN_CRASH` and ignored in PR gating so unrelated pre-existing bugs do not block merges.
-- **`signatures/fixed-history.json`**: one signature per **closed** issue. Matches are classified as `REGRESSION` (failing PR CI with a link to the previously closed issue).
-
-A crash that matches neither file is new. Triage writes a draft for it to `target/triage/draft-signatures.json`; it becomes known once its issue is filed upstream with the `B-fuzzing` label and the next sync runs. See [GitHub Issues Synchronization](#github-issues-synchronization).
-
-```json
-{
-  "schema_version": 1,
-  "signatures": [
-    {
-      "id": "issue-49411",
-      "message": "assertion failed: parent_proxy.currently_active().is_some()",
-      "source_file": "components/script/dom/window/windowproxy.rs",
-      "stack_frames": [
-        "<script::dom::servoparser::ParserContext>::initialize_document_object",
-        "<script::dom::servoparser::ParserContext>::load_document"
-      ],
-      "issue": "https://github.com/servo/servo/issues/49411"
-    }
-  ]
-}
-```
-
-### Matching Algorithm
-- **Exact Message**: `entry["message"] == crash.message`
-- **Normalized Source File**: `entry["source_file"] == crash.source_file` (strips line/column numbers so line shifts don't break signatures).
-- **Ordered Stack Frames**: Each frame specified in `entry["stack_frames"]` must appear in the actual backtrace in the given relative order. The list is empty when the issue has no backtrace; the signature then matches on message and source file alone.
-
----
-
-## Generating Test Cases
-
-### Supported Fuzzers
-
-1. **[Domato](https://github.com/googleprojectzero/domato)** (Google Project Zero):
-   ```bash
-   git clone https://github.com/googleprojectzero/domato.git generators/domato
-   python generators/domato/generator.py -o target/generated/domato -n 100
-   ```
-
-2. **[Freedom](https://github.com/sslab-gatech/freedom)** (SSLab Gatech):
-   ```bash
-   git clone https://github.com/sslab-gatech/freedom.git generators/freedom
-   python generators/freedom/main.py -i 1 -m generate -n 100 -o target/generated/freedom
-   ```
-
-3. **[Minerva](https://github.com/ChijinZ/Minerva)** (ChijinZ):
-   ```bash
-   git clone https://github.com/ChijinZ/Minerva.git generators/minerva
-   export MEM_DEP_JSON_PATH=generators/minerva/mod_ref_helper/mem_dep.json
-   python generators/minerva/generator.py --output_dir target/generated/minerva --no_of_files 100
-   ```
-
-Or automatically via CLI:
-```bash
-servo-fuzzing generate --clone -n 100 -o target/generated
-```
-
----
-
-## Reducing & Reproducing Test Cases
-
-### Reproducing Flaky Crashes
-
-Estimate crash probability across multiple parallel rounds:
-
-```bash
-servo-fuzzing reproduce testcase.html \
-    --binary ./servo/servoshell \
-    --pattern "parent_proxy" \
-    --repeat 10 \
-    --parallel 20
-```
-
-### Bisecting Across Nightlies
-
-Find the upstream commit range that introduced a crash by bisecting the
-[Servo nightly builds](https://github.com/servo/servo-nightly-builds/releases):
-
-```bash
-servo-fuzzing bisect crash.html \
-    --pattern "Found hoisted box" \
-    -o target/bisect/report.md
-```
-
-The latest nightly must reproduce the crash. Without `--good`, older nightlies
-are searched with doubling steps until one does not reproduce, then binary
-search narrows it to adjacent nightlies. The report links the
-`servo/servo` compare range between the last good and first bad nightly.
-Use `--good`/`--bad YYYY-MM-DD` to bound the search, `--attempts` for flaky
-crashes and `--asset` for other platforms. Set `GITHUB_TOKEN` to avoid API
-rate limits.
-
-### Crash Reports and Evidence Packs
-
-`report` runs a testcase and prints an issue draft: title, labels, testcase,
-reproduction rate and the backtrace without renderer logs. With `--pack` it
-writes a directory that a developer, a maintainer of this corpus and a coding
-agent can all work from:
-
-```bash
-servo-fuzzing report reduced.html --binary ./servo/servoshell \
-    --pack target/reports/my-crash --original generated.html --bisect
-```
-
-| File | Reader | Content |
-|---|---|---|
-| `issue.md` | Servo developers | Measured facts only: testcase, reproduction rate, regression range, backtrace |
-| `context.json` | agents, scripts | The same facts as data, plus the source around the panic line and every commit in the range with its changed files |
-| `AGENT.md` | agents | The analysis task: make the fuzzer's generated names readable, ablate, map the crash to Servo source |
-| `analysis.md` | people and agents | Root cause notes, with verified facts apart from hypotheses |
-| `signature_draft.json` | people | Draft signature of this crash. It reaches `signatures/rust-panic.json` through the upstream sync once the issue is filed |
-
-`--bisect` runs the nightly bisect above and scores each commit in the range by
-how directly it touches the crash: adding the panic message, changing the
-panicking file, or changing a file in the backtrace. `issue.md` lists the
-closest ones; none of them is confirmed by building it.
-
-The tool never calls a model. To get an analysis, point an agent at the pack
-directory and `AGENT.md`, or fill in `analysis.md` by hand. Re-running `report`
-regenerates everything except `analysis.md`. Its filled-in sections are copied
-into `issue.md` only with `--include-analysis`, so what gets posted upstream is
-an explicit choice.
-
-### Reducing Test Cases with Lithium
-
-You can use [Lithium](https://github.com/MozillaSecurity/lithium/) to reduce a testcase to a minimal reproducer:
-
-```bash
-# Reduce until the crash disappears
-python3 -m lithium crashes -t1 ./servo/servoshell -xzf testcase.html
-
-# Reduce while preserving a specific panic message
-python3 -m lithium outputs -t1 -s "assertion failed" ./servo/servoshell -xzf testcase.html
-```
-
-The built-in reducer uses Lithium's coarse-to-fine chunk removal: large blocks
-first, then progressively smaller blocks, repeating single-line passes until
-no further removal preserves the panic. No Lithium installation is needed.
-
-```bash
-./servo-fuzzing reduce target/bundle/freedom/1-179437008301.html \
-  --binary ../servo/target/debug/servoshell \
-  --pattern "assertion failed: end_offset" \
-  --output target/panic-corpus/range-end-offset.html
-```
-
-For intermittent panics, add `--attempts 3` to try each candidate up to three
-times (accepting any matching panic). `--timeout` controls each launch.
-Successful reductions are saved immediately; interrupted runs leave the last
-accepted testcase at the output path. Resume by reducing that output file.
-Trial files live beside the output, so choose an output directory where relative
-resource references still resolve.
-
-Or call the built-in reducer from Python:
-```python
-from servo_fuzzing.reducer import reduce_delta_lines
-reduce_delta_lines("./servo/servoshell", Path("testcase.html"), target_message="parent_proxy")
-```
-
----
-
-## GitHub Issues Synchronization
-
-Servo tracks fuzzing bugs using the [`B-fuzzing`](https://github.com/servo/servo/issues?q=state%3Aopen%20label%3A%22B-fuzzing%22) label. `sync-issues` rebuilds both signature files from those issues:
-
-```bash
-servo-fuzzing sync-issues \
-  --repo servo/servo \
-  --signatures signatures/rust-panic.json \
-  --history signatures/fixed-history.json
-```
-
-- Open issues are written to `--signatures`, closed issues to `--history`, each as `issue-<number>`. Nothing from the previous files is kept, so a signature follows its issue when it is edited, closed or reopened.
-- A signature needs a panic line with a source location (`message (thread ..., at file.rs:line)` or `panicked at file.rs:line`). Issues without one (ASAN reports, signals, debugger backtraces, tracking issues) are listed as skipped; `--summary FILE` writes the counts and the list as Markdown.
-- The files are only written after every GitHub request succeeded and at least one issue was returned.
-
-`.github/workflows/sync-signatures.yml` runs this daily and on manual dispatch (`gh workflow run sync-signatures.yml`), and opens a pull request when the result differs from the committed files. The fuzzing and import workflows run the same sync before triage, so they compare against the current upstream state without committing anything.
-
----
-
-## Bundle Format
-
-A bundle is a gzip-compressed tar archive of HTML testcases, with nothing else in it: no manifest, no signatures, no `servoshell`.
-
-```
-fuzz-bundle-latest.tar.gz
-├── domato/fuzz-00001.html
-├── freedom/1-179471886257.html
-└── minerva/....html
-```
-
-- **Paths** are relative to the directory given to `bundle pack --source` (`target/generated` in CI), so the first component is the generator name. A testcase must be self-contained, because no other files are packed.
-- **Selection** (`servo-fuzzing bundle pack`): of the generated testcases, only those with status `PASS` in the triage run (`--from-triage target/triage`) are kept, up to `--max-tests` (300). Crashes and timeouts of the run that built the bundle are left out, so every testcase passed on the nightly that built it.
-- **Replay** (`servo-fuzzing run --bundle SPEC`, or `./mach test-fuzzing --bundle SPEC` in Servo): the archive is unpacked into `<output>/bundle`, every `.html`/`.htm` in it is run, and each crash is compared with the two signature files. `SPEC` is a local `.tar.gz`, a URL, or `latest` (the default), which downloads the asset below. The run fails when the bundle cannot be obtained.
-
-| Archive | Content | Where it is published |
-|---|---|---|
-| `fuzz-bundle-latest.tar.gz` | Passing testcases to replay in Servo CI | Asset of the `latest` release and artifact `fuzz-bundle-latest`, from the weekly `fuzzing-cron.yml` run |
-| `new-panic-corpus.tar.gz` | Minimized reproducers of the new panics of one run as `<signature id>.html`, each with its draft signature as `<signature id>.json` | Asset of the `latest` release (weekly run) and artifact `new-panic-corpus` |
-
-The `triage-reports` artifact is not a bundle: it is the `target/triage` directory with `report.md`, `summary.json`, `draft-signatures.json` and one folder per crash.
-
----
-
-## Shell Scripts
-
-- `./download-latest-nightly.sh`: Downloads the latest Linux `servoshell` nightly into `./servo`.
-- `./fuzz-continuous.sh`: Runs `python -m servo_fuzzing.campaign`.
-
----
-
-## Collect new panic inputs
-
-Replay automatically preserves new Rust panic inputs in `<output>/corpus`, with
-logs, draft signatures, and provenance. This collects original inputs; it does
-not minimize, reproduce, ignore, or file issues for them.
-
-Collect a local run:
-
-```sh
-python -m servo_fuzzing.collect --input ../servo/target/fuzzing --output target/panic-corpus
-```
-
-Collect an existing GitHub Actions run:
-
-```sh
-gh run download RUN_ID --repo tannal/servo-fuzzing --name triage-reports --dir target/downloaded-triage
-python -m servo_fuzzing.collect --input target/downloaded-triage --output target/panic-corpus
-```
-
-Use artifact `fuzzing-artifacts` for the ordinary CI workflow. Future runs also
-upload `new-panic-corpus`, already arranged for replay. Content hashes prevent
-identical HTML from being collected repeatedly. The summary selects only current
-NEW_CRASH results with a parsed panic signature, excluding stale folders and
-known crashes. Archived inputs work without the original CI filesystem. External
-resources not saved in the original report cannot be recovered by this tool.
-
-Latest bundles now refresh on each run. A valid cached archive remains a warned
-offline fallback if refreshing fails. Local bundle paths do not download.
-
-### Timed-out testcases in bundles
-
-`bundle pack` drops testcases that time out by default. A replay never fails on
-a timeout, so keeping them only costs time, and a looping testcase still gets a
-chance to crash before the threshold:
-
-```sh
-servo-fuzzing bundle pack --source target/generated --from-triage target/triage \
-  --timeouts include --max-timeout-tests 50
-```
-
-`--max-timeout-tests` (default 50) bounds that cost; the kept timeouts count
-towards `--max-tests`. The weekly campaign reads the `BUNDLE_TIMEOUTS`
-repository variable (`exclude` or `include`), which a manual run can override
-with the `bundle_timeouts` input.
-
-
-## License
-
-This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
+**Runtime Constraint**: `servo_fuzzing/runner.py` and the replay modules it imports (`executor.py`, `bundle.py`, `parser.py`, `reporter.py`, `signatures.py`, `collect.py`) must use **Python standard library modules only** so `servo/servo`'s `./mach test-fuzzing` executes cleanly under Mach's interpreter without `pip install` dependencies.

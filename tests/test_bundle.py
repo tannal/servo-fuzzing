@@ -95,6 +95,111 @@ class TestBundle(unittest.TestCase):
             )
             self.assertEqual(names, ["hang0.html", "hang1.html", "pass0.html", "pass1.html"])
 
+    def test_resolve_bundle_spec_versioning_and_immutable_cache(self):
+        from unittest.mock import patch
+        from servo_fuzzing.bundle import obtain_bundle, resolve_bundle_spec
+
+        url, asset, imm = resolve_bundle_spec("latest", repo="tannal/servo-fuzzing")
+        self.assertEqual(url, "https://github.com/tannal/servo-fuzzing/releases/latest/download/fuzz-bundle-latest.tar.gz")
+        self.assertEqual(asset, "fuzz-bundle-latest.tar.gz")
+        self.assertFalse(imm)
+
+        url, asset, imm = resolve_bundle_spec("crashes", repo="tannal/servo-fuzzing")
+        self.assertTrue(url.endswith("/new-panic-corpus.tar.gz"))
+        self.assertFalse(imm)
+
+        for spec in ("2026-11-23", "bundle-2026-11-23", "fuzz-bundle-2026-11-23.tar.gz"):
+            url, asset, imm = resolve_bundle_spec(spec, repo="tannal/servo-fuzzing")
+            self.assertEqual(
+                url,
+                "https://github.com/tannal/servo-fuzzing/releases/download/bundle-2026-11-23/fuzz-bundle-2026-11-23.tar.gz",
+            )
+            self.assertEqual(asset, "fuzz-bundle-2026-11-23.tar.gz")
+            self.assertTrue(imm)
+
+        url, asset, imm = resolve_bundle_spec("2026-11-23.2", repo="tannal/servo-fuzzing")
+        self.assertTrue(url.endswith("/bundle-2026-11-23.2/fuzz-bundle-2026-11-23.2.tar.gz"))
+        self.assertTrue(imm)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache = Path(tmpdir)
+            cached = cache / "fuzz-bundle-2026-11-23.tar.gz"
+            cached.write_bytes(b"cached")
+            with patch("servo_fuzzing.bundle.is_valid_tar_gz", return_value=True), patch(
+                "servo_fuzzing.bundle.download_bundle"
+            ) as dl:
+                self.assertEqual(obtain_bundle("bundle-2026-11-23", cache_dir=cache, repo="tannal/servo-fuzzing"), cached)
+                dl.assert_not_called()
+                obtain_bundle("bundle-2026-11-23", cache_dir=cache, repo="tannal/servo-fuzzing", force_download=True)
+                dl.assert_called_once()
+
+    def test_pack_per_generator_balanced_and_manifest(self):
+        import json
+        from servo_fuzzing.bundle import read_bundle_manifest
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            src = tmp / "generated"
+            results = []
+            for gen in ("domato", "freedom", "minerva"):
+                gdir = src / gen
+                gdir.mkdir(parents=True)
+                for i in range(6):
+                    tc = gdir / f"p{i}.html"
+                    tc.write_text(f"<p>{gen} p{i}</p>")
+                    results.append({"testcase": str(tc), "status": "PASS"})
+                for i in range(2):
+                    tc = gdir / f"t{i}.html"
+                    tc.write_text(f"<p>{gen} t{i}</p>")
+                    results.append({"testcase": str(tc), "status": "TIMEOUT"})
+
+            summary_file = tmp / "summary.json"
+            summary_file.write_text(json.dumps({"results": results}))
+
+            # 1. Timeouts excluded -> 4 per generator (12 total)
+            tar_excl = tmp / "excl.tar.gz"
+            pack_bundle(
+                source_dir=src,
+                output_tar=tar_excl,
+                from_triage=summary_file,
+                per_generator=4,
+                max_tests=12,
+                include_timeouts=False,
+                version="bundle-2026-11-23",
+                servo_version="Servo 0.8.0",
+            )
+            dest_excl = tmp / "dest_excl"
+            unpacked_excl = unpack_bundle(tar_excl, dest_excl)
+            self.assertEqual(len(unpacked_excl), 12)
+            m_excl = read_bundle_manifest(dest_excl)
+            self.assertIsNotNone(m_excl)
+            assert m_excl is not None
+            self.assertEqual(m_excl["version"], "bundle-2026-11-23")
+            self.assertEqual(m_excl["timeouts"], "exclude")
+            self.assertEqual(m_excl["generators"], {"domato": 4, "freedom": 4, "minerva": 4})
+            self.assertEqual(m_excl["timeout_tests"], [])
+
+            # 2. Timeouts included -> max_timeout_tests=3 (1 per generator) + 3 pass each = 12 total
+            tar_incl = tmp / "incl.tar.gz"
+            pack_bundle(
+                source_dir=src,
+                output_tar=tar_incl,
+                from_triage=summary_file,
+                per_generator=4,
+                max_tests=12,
+                include_timeouts=True,
+                max_timeout_tests=3,
+                version="bundle-2026-11-23.2",
+            )
+            dest_incl = tmp / "dest_incl"
+            unpacked_incl = unpack_bundle(tar_incl, dest_incl)
+            self.assertEqual(len(unpacked_incl), 12)
+            m_incl = read_bundle_manifest(dest_incl)
+            assert m_incl is not None
+            self.assertEqual(m_incl["timeouts"], "include")
+            self.assertEqual(m_incl["generators"], {"domato": 4, "freedom": 4, "minerva": 4})
+            self.assertEqual(sorted(m_incl["timeout_tests"]), ["domato/t0.html", "freedom/t0.html", "minerva/t0.html"])
+
 
 if __name__ == "__main__":
     unittest.main()

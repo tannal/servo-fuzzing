@@ -1,20 +1,27 @@
 from __future__ import annotations
 
+import io
 import json
 import os
+import re
 import shutil
 import subprocess
 import tarfile
 import time
+import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from .executor import TestStatus, run_single_test
+from .executor import DEFAULT_SERVO_ARGS, TestStatus, run_single_test
 
 DEFAULT_BUNDLE_ASSET = "fuzz-bundle-latest.tar.gz"
 DEFAULT_MAX_TIMEOUT_TESTS = 50
+DEFAULT_PER_GENERATOR = 400
+BUNDLE_MANIFEST_NAME = "manifest.json"
+VERSION_SPEC_RE = re.compile(r"^(?:fuzz-)?(?:bundle-)?(\d{4}-\d{2}-\d{2}(?:\.\d+)?)(?:\.tar\.gz)?$")
 
 
 def get_default_bundle_repo() -> str:
@@ -58,6 +65,66 @@ def resolve_latest_bundle_url(
     return f"https://github.com/{target_repo}/releases/latest/download/{asset_name}"
 
 
+def resolve_bundle_spec(
+    bundle_spec: Optional[str] = "latest",
+    repo: Optional[str] = None,
+) -> tuple[str, str, bool]:
+    """Resolve a bundle spec into ``(download_url, cache_asset_name, is_immutable)``."""
+    target_repo = repo or get_default_bundle_repo()
+    spec_str = str(bundle_spec).strip() if bundle_spec else "latest"
+
+    if spec_str.startswith(("http://", "https://")):
+        url_path = urllib.parse.urlparse(spec_str).path
+        name = Path(url_path).name or DEFAULT_BUNDLE_ASSET
+        is_immutable = bool(VERSION_SPEC_RE.match(name))
+        return spec_str, name, is_immutable
+
+    spec_lower = spec_str.lower()
+    if spec_lower in {"latest", DEFAULT_BUNDLE_ASSET}:
+        return (
+            resolve_latest_bundle_url(repo=target_repo, asset_name=DEFAULT_BUNDLE_ASSET),
+            DEFAULT_BUNDLE_ASSET,
+            False,
+        )
+
+    if Path(spec_str).name.lower() in {"crashes", "corpus", "panic-corpus", "new-panic-corpus", "new-panic-corpus.tar.gz"}:
+        return (
+            resolve_latest_bundle_url(repo=target_repo, asset_name="new-panic-corpus.tar.gz"),
+            "new-panic-corpus.tar.gz",
+            False,
+        )
+
+    m = VERSION_SPEC_RE.match(spec_str)
+    if m:
+        ver = m.group(1)
+        tag = f"bundle-{ver}"
+        asset = f"fuzz-bundle-{ver}.tar.gz"
+        return (
+            f"https://github.com/{target_repo}/releases/download/{tag}/{asset}",
+            asset,
+            True,
+        )
+
+    asset = f"fuzz-bundle-{spec_str}.tar.gz"
+    return (
+        f"https://github.com/{target_repo}/releases/download/{spec_str}/{DEFAULT_BUNDLE_ASSET}",
+        asset,
+        True,
+    )
+
+
+def read_bundle_manifest(bundle_dir: Path) -> Optional[dict]:
+    """Read ``manifest.json`` from an unpacked bundle directory, if present."""
+    manifest_path = Path(bundle_dir) / BUNDLE_MANIFEST_NAME
+    if not manifest_path.is_file():
+        return None
+    try:
+        data = json.loads(manifest_path.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else None
+    except (OSError, ValueError):
+        return None
+
+
 def is_valid_tar_gz(tar_path: Path) -> bool:
     if not tar_path.is_file() or tar_path.stat().st_size == 0:
         return False
@@ -86,26 +153,19 @@ def obtain_bundle(
     cache = cache_dir or get_default_cache_dir()
     cache.mkdir(parents=True, exist_ok=True)
 
-    spec_str = str(bundle_spec).strip() if bundle_spec else "latest"
-    spec_name = Path(spec_str).name.lower()
-    if spec_name in {"crashes", "corpus", "panic-corpus", "new-panic-corpus", "new-panic-corpus.tar.gz"}:
-        asset_name = "new-panic-corpus.tar.gz"
-    else:
-        asset_name = DEFAULT_BUNDLE_ASSET
-
+    url, asset_name, is_immutable = resolve_bundle_spec(bundle_spec=bundle_spec, repo=repo)
     cached_bundle = cache / asset_name
 
-    if spec_str.startswith(("http://", "https://")):
-        url = spec_str
-    else:
-        url = resolve_latest_bundle_url(repo=repo, asset_name=asset_name)
+    if is_immutable and not force_download and cached_bundle.exists() and is_valid_tar_gz(cached_bundle):
+        print(f"Using cached immutable bundle: {cached_bundle}")
+        return cached_bundle
 
-    print(f"Resolving latest bundle from {url}...")
+    print(f"Resolving bundle from {url}...")
     try:
         download_bundle(url=url, output_path=cached_bundle, token=token)
         return cached_bundle
     except Exception as exc:
-        print(f"Warning: Could not download latest bundle from {url}: {exc}")
+        print(f"Warning: Could not download bundle from {url}: {exc}")
         if cached_bundle.exists() and is_valid_tar_gz(cached_bundle):
             print(f"Falling back to existing cached bundle: {cached_bundle}")
             return cached_bundle
@@ -121,15 +181,18 @@ def obtain_bundle(
 def pack_bundle(
     source_dir: Path,
     output_tar: Path,
-    max_tests: int = 300,
+    max_tests: int = 1200,
     filter_timeouts_with_binary: Optional[Path] = None,
     timeout: float = 2.0,
     from_triage: Optional[Path] = None,
     jobs: int = 4,
     include_timeouts: bool = False,
     max_timeout_tests: int = DEFAULT_MAX_TIMEOUT_TESTS,
+    per_generator: Optional[int] = None,
+    version: Optional[str] = None,
+    servo_version: Optional[str] = None,
 ) -> Path:
-    """Pack testcases into a bundle.
+    """Pack testcases into a bundle with a ``manifest.json`` metadata file.
 
     Timed-out testcases are dropped unless ``include_timeouts`` is set, in which
     case up to ``max_timeout_tests`` of them are kept: a replay never fails on a
@@ -141,10 +204,49 @@ def pack_bundle(
 
     all_html = sorted(list(source_dir.rglob("*.html")) + list(source_dir.rglob("*.htm")))
     selected: list[Path] = []
+    selected_timeouts: set[Path] = set()
+
+    def _rel_pos(tc: Path) -> Path:
+        return tc.relative_to(source_dir) if tc.is_relative_to(source_dir) else Path(tc.name)
+
+    def _gen_key(tc: Path) -> str:
+        rel = _rel_pos(tc)
+        return rel.parts[0] if len(rel.parts) > 1 else "root"
 
     def select(passing: list[Path], timed_out: list[Path]) -> list[Path]:
+        nonlocal selected_timeouts
+        if per_generator is not None and per_generator > 0:
+            groups_pass: dict[str, list[Path]] = {}
+            groups_to: dict[str, list[Path]] = {}
+            for tc in passing:
+                groups_pass.setdefault(_gen_key(tc), []).append(tc)
+            for tc in timed_out:
+                groups_to.setdefault(_gen_key(tc), []).append(tc)
+            gen_names = sorted(set(groups_pass) | set(groups_to))
+            kept: set[Path] = set()
+            chosen_timeouts: set[Path] = set()
+            to_budget = min(max_timeout_tests, max_tests) if include_timeouts else 0
+            n_gens = max(len(gen_names), 1)
+            base_to, rem_to = divmod(to_budget, n_gens)
+            for idx, gen_name in enumerate(gen_names):
+                gen_to_cap = min(per_generator, base_to + (1 if idx < rem_to else 0)) if include_timeouts else 0
+                gen_to = groups_to.get(gen_name, [])[:gen_to_cap]
+                gen_pass = groups_pass.get(gen_name, [])[: max(0, per_generator - len(gen_to))]
+                kept.update(gen_pass)
+                kept.update(gen_to)
+                chosen_timeouts.update(gen_to)
+            ordered = [tc for tc in all_html if tc in kept][:max_tests]
+            ordered_set = set(ordered)
+            selected_timeouts = chosen_timeouts & ordered_set
+            print(
+                f"Timeouts: {len(selected_timeouts)} of {len(timed_out)} "
+                f"{'included' if include_timeouts else 'excluded'} (per_generator={per_generator})."
+            )
+            return ordered
+
         kept_timeouts = timed_out[: max(0, min(max_timeout_tests, max_tests))] if include_timeouts else []
         kept = set(passing[: max_tests - len(kept_timeouts)]) | set(kept_timeouts)
+        selected_timeouts = set(kept_timeouts)
         print(
             f"Timeouts: {len(kept_timeouts)} of {len(timed_out)} "
             f"{'included' if include_timeouts else 'excluded'}."
@@ -179,7 +281,7 @@ def pack_bundle(
         health = run_single_test(
             binary=bin_path,
             testcase=Path("about:blank"),
-            servo_args=["-xfz"],
+            servo_args=list(DEFAULT_SERVO_ARGS),
             timeout=5.0,
         )
         if health.status in (TestStatus.NEW_CRASH, TestStatus.ERROR):
@@ -195,7 +297,7 @@ def pack_bundle(
             res = run_single_test(
                 binary=bin_path,
                 testcase=tc,
-                servo_args=["-xfz", "--enable-experimental-web-platform-features"],
+                servo_args=list(DEFAULT_SERVO_ARGS),
                 timeout=timeout,
             )
             return tc, res
@@ -212,13 +314,36 @@ def pack_bundle(
         selected = select(passing, timed_out)
         print(f"Filter summary: {len(selected)} kept, {discarded_errors} errors discarded.")
     elif not selected:
-        selected = all_html[:max_tests]
+        selected = select(all_html, [])
+
+    gen_counts: dict[str, int] = {}
+    for tc in selected:
+        rel = _rel_pos(tc)
+        if len(rel.parts) > 1:
+            gen_counts[rel.parts[0]] = gen_counts.get(rel.parts[0], 0) + 1
+
+    manifest = {
+        "schema_version": 1,
+        "version": version or "unversioned",
+        "created_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "servo_version": servo_version or "unknown",
+        "timeouts": "include" if include_timeouts else "exclude",
+        "per_generator": per_generator,
+        "total_tests": len(selected),
+        "generators": gen_counts,
+        "timeout_tests": sorted(_rel_pos(tc).as_posix() for tc in selected if tc in selected_timeouts),
+    }
 
     print(f"Packing {len(selected)} selected testcases into {output_tar}...")
     with tarfile.open(output_tar, "w:gz") as tar:
         for tc in selected:
-            rel_name = tc.relative_to(source_dir) if tc.is_relative_to(source_dir) else tc.name
+            rel_name = _rel_pos(tc)
             tar.add(tc, arcname=str(rel_name))
+        manifest_bytes = (json.dumps(manifest, indent=2) + "\n").encode("utf-8")
+        info = tarfile.TarInfo(BUNDLE_MANIFEST_NAME)
+        info.size = len(manifest_bytes)
+        info.mtime = int(time.time())
+        tar.addfile(info, io.BytesIO(manifest_bytes))
 
     print(f"Bundle created: {output_tar} ({output_tar.stat().st_size / 1024:.1f} KB)")
     return output_tar

@@ -73,6 +73,46 @@ class TestTestcaseSelection(unittest.TestCase):
         self.assertEqual(code, 0)
         obtain.assert_not_called()
 
+    def test_timeouts_flag_filters_manifest_timeout_tests(self):
+        import json
+        from servo_fuzzing.bundle import pack_bundle
+
+        src = self.root / "gen"
+        (src / "domato").mkdir(parents=True)
+        pass_tc = src / "domato" / "pass0.html"
+        hang_tc = src / "domato" / "hang0.html"
+        pass_tc.write_text("<p>ok</p>")
+        hang_tc.write_text("<script>while(1){}</script>")
+        summary_file = self.root / "summary.json"
+        summary_file.write_text(json.dumps({
+            "results": [
+                {"testcase": str(pass_tc), "status": "PASS"},
+                {"testcase": str(hang_tc), "status": "TIMEOUT"},
+            ]
+        }))
+        archive = self.root / "with_timeouts.tar.gz"
+        pack_bundle(
+            source_dir=src,
+            output_tar=archive,
+            from_triage=summary_file,
+            include_timeouts=True,
+            max_timeout_tests=5,
+            max_tests=10,
+        )
+
+        # Default --timeouts include runs both
+        with patch("servo_fuzzing.bundle.obtain_bundle", return_value=archive):
+            code, out = self.run_dry("--bundle", "2026-11-23")
+        self.assertEqual(code, 0)
+        self.assertIn("Found 2 test cases", out)
+
+        # --timeouts exclude filters out hang0.html
+        with patch("servo_fuzzing.bundle.obtain_bundle", return_value=archive):
+            code, out = self.run_dry("--bundle", "2026-11-23", "--timeouts", "exclude")
+        self.assertEqual(code, 0)
+        self.assertIn("Excluded 1 bundled timeout testcase(s)", out)
+        self.assertIn("Found 1 test cases", out)
+
 
 if __name__ == "__main__":
     unittest.main()

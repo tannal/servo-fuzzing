@@ -2,33 +2,36 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
 import shlex
 import sys
 from pathlib import Path
 from typing import Any, Optional
 
 from .bisect import DEFAULT_ASSET, DEFAULT_NIGHTLY_REPO, format_bisect_report, run_bisect
-from .bundle import DEFAULT_MAX_TIMEOUT_TESTS, download_bundle, pack_bundle, unpack_bundle
+from .bundle import (
+    DEFAULT_MAX_TIMEOUT_TESTS,
+    download_bundle,
+    pack_bundle,
+    unpack_bundle,
+)
 from .evidence import (
     ANALYSIS_FILE,
-    Evidence,
-    fetch_range_commits,
-    fetch_source_snippet,
-    github_fetchers,
+    gather_evidence,
     render_issue,
-    version_sha,
     write_evidence_pack,
 )
-from .executor import TestResult, TestStatus, run_single_test
+from .executor import DEFAULT_SERVO_ARGS
 from .generators import GeneratorManager
-from .github_sync import (
-    sync_signatures_from_github,
+from .github_sync import sync_signatures_from_github
+from .proposals import (
+    file_upstream_issues,
+    format_filing_summary,
+    propose_panics,
 )
 from .reducer import reduce_delta_lines, reduce_with_lithium
 from .reporter import make_signature_draft
 from .reproduce import estimate_reproducibility, parallelize_test, repeat_test
-from .runner import get_servo_version, main as runner_main
+from .runner import main as runner_main
 from .signatures import load_signatures, save_signatures, sync_draft_signatures
 
 
@@ -50,6 +53,8 @@ def cmd_run(args: argparse.Namespace) -> int:
         runner_args.extend(["--bundle", args.bundle])
     if getattr(args, "force_download", False):
         runner_args.append("--force-download")
+    if getattr(args, "timeouts", None):
+        runner_args.extend(["--timeouts", args.timeouts])
     if args.jobs:
         runner_args.extend(["-j", str(args.jobs)])
     if args.timeout:
@@ -225,56 +230,23 @@ def cmd_report(args: argparse.Namespace) -> int:
         return 1
     servo_args = shlex.split(args.servo_args)
 
-    def crash_site(result: TestResult) -> Optional[tuple]:
-        info = result.crash_info
-        return (info.message, info.source_file, info.line) if info else None
-
-    crashing: list[TestResult] = []
-    for attempt in range(1, args.attempts + 1):
-        print(f"[{attempt}/{args.attempts}] Running {testcase} on {binary}...")
-        res = run_single_test(binary=binary, testcase=testcase, servo_args=servo_args, timeout=args.timeout)
-        crashed = res.crash_info is not None or res.status == TestStatus.NEW_CRASH
-        if crashed and (not crashing or crash_site(res) == crash_site(crashing[0])):
-            crashing.append(res)
-    if not crashing:
-        print(f"Error: no crash in {args.attempts} run(s); nothing to report.")
-        return 1
-
-    evidence = Evidence(
+    evidence = gather_evidence(
+        binary=binary,
         testcase=testcase,
-        result=crashing[0],
-        servo_version=get_servo_version(binary),
         servo_args=servo_args,
         attempts=args.attempts,
-        crashes=len(crashing),
+        timeout=args.timeout,
         original=Path(args.original).resolve() if args.original else None,
+        bisect=args.bisect,
+        good=args.good,
+        bad=args.bad,
+        cache_dir=Path(args.cache_dir),
+        token=args.token,
     )
+    if evidence is None:
+        print(f"Error: no crash in {args.attempts} run(s); nothing to report.")
+        return 1
     crash = evidence.crash
-    fetch_json, fetch_text = github_fetchers(args.token)
-
-    if args.bisect:
-        try:
-            evidence.bisect, _ = run_bisect(
-                testcase=testcase,
-                pattern=re.escape(crash.message) if crash else None,
-                good=args.good,
-                bad=args.bad,
-                attempts=args.attempts,
-                timeout=args.timeout,
-                servo_args=servo_args,
-                cache_dir=Path(args.cache_dir),
-                token=args.token,
-            )
-            evidence.commits = fetch_range_commits(evidence.bisect, crash, fetch_json)
-        except Exception as exc:
-            print(f"Warning: bisect failed, report has no regression range: {exc}")
-
-    source_ref = version_sha(evidence.servo_version)
-    if crash and source_ref:
-        try:
-            evidence.snippet = fetch_source_snippet(crash, source_ref, fetch_text)
-        except Exception as exc:
-            print(f"Warning: could not fetch {crash.source_file}@{source_ref}: {exc}")
 
     if args.pack:
         issue_path = write_evidence_pack(evidence, Path(args.pack), include_analysis=args.include_analysis)
@@ -376,6 +348,9 @@ def cmd_bundle(args: argparse.Namespace) -> int:
             jobs=getattr(args, "jobs", 4),
             include_timeouts=args.timeouts == "include",
             max_timeout_tests=args.max_timeout_tests,
+            per_generator=getattr(args, "per_generator", None),
+            version=getattr(args, "version", None),
+            servo_version=getattr(args, "servo_version", None),
         )
     elif args.action == "unpack":
         unpack_bundle(
@@ -389,6 +364,48 @@ def cmd_bundle(args: argparse.Namespace) -> int:
             output_path=Path(args.output),
             token=args.token,
         )
+    return 0
+
+
+def cmd_propose(args: argparse.Namespace) -> int:
+    servo_args = shlex.split(args.servo_args)
+    binary = Path(args.binary)
+    propose_panics(
+        drafts_path=Path(args.drafts),
+        corpus_dir=Path(args.corpus),
+        out_dir=Path(args.output),
+        gather=lambda tc, regresses_issue=None: gather_evidence(
+            binary=binary,
+            testcase=tc,
+            servo_args=servo_args,
+            attempts=args.attempts,
+            timeout=args.timeout,
+            bisect=args.bisect,
+            cache_dir=Path(args.cache_dir),
+            token=args.token,
+            regresses_issue=regresses_issue,
+        ),
+        target_repo=args.repo,
+        limit=args.max_panics,
+        token=args.token,
+    )
+    return 0
+
+
+def cmd_file_issues(args: argparse.Namespace) -> int:
+    records = file_upstream_issues(
+        proposals_dir=Path(args.proposals),
+        repo=args.repo,
+        token=args.token,
+        dry_run=args.dry_run,
+        signatures_path=Path(args.signatures) if args.signatures else None,
+        history_path=Path(args.history) if args.history else None,
+    )
+    summary = format_filing_summary(records, args.repo)
+    print("\n" + summary)
+    if args.summary:
+        with open(args.summary, "a", encoding="utf-8") as summary_file:
+            summary_file.write(summary)
     return 0
 
 
@@ -443,6 +460,12 @@ def main(argv: Optional[list[str]] = None) -> int:
     p_run.add_argument("--testcases", nargs="*", default=None, help="Direct testcase directories or HTML files to replay")
     p_run.add_argument("--bundle", default=None, help="Path or URL to testcase bundle (.tar.gz)")
     p_run.add_argument("--force-download", action="store_true", help="Force re-downloading bundle")
+    p_run.add_argument(
+        "--timeouts",
+        choices=["include", "exclude"],
+        default="include",
+        help="Include or exclude testcases marked as timeouts in a bundle manifest (default: include)",
+    )
     p_run.add_argument("-j", "--jobs", type=int, default=None, help="Parallel worker threads")
     p_run.add_argument("--timeout", type=float, default=None, help="Per-test timeout in seconds")
     p_run.add_argument("--generate", action="store_true", help="Generate fresh tests before running")
@@ -491,7 +514,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     p_bisect.add_argument("--bad", help="Known bad nightly tag (YYYY-MM-DD); defaults to the latest nightly")
     p_bisect.add_argument("--attempts", type=int, default=3, help="Runs per nightly; any match counts as bad")
     p_bisect.add_argument("--timeout", type=float, default=10.0, help="Per-run timeout in seconds")
-    p_bisect.add_argument("--servo-args", default="-xfz", help="Arguments passed to servoshell")
+    p_bisect.add_argument("--servo-args", default=" ".join(DEFAULT_SERVO_ARGS), help="Arguments passed to servoshell")
     p_bisect.add_argument("--cache-dir", default="target/bisect", help="Directory for downloaded nightlies")
     p_bisect.add_argument("--repo", default=DEFAULT_NIGHTLY_REPO, help="GitHub repo hosting nightly releases")
     p_bisect.add_argument("--asset", default=DEFAULT_ASSET, help="Release asset name for this platform")
@@ -506,7 +529,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     p_rep.add_argument("-o", "--output", help="Save report to file")
     p_rep.add_argument("--timeout", type=float, default=5.0, help="Timeout in seconds")
     p_rep.add_argument("--attempts", type=int, default=3, help="Runs used for the reproducibility rate")
-    p_rep.add_argument("--servo-args", default="-xfz", help="Arguments passed to servoshell")
+    p_rep.add_argument("--servo-args", default=" ".join(DEFAULT_SERVO_ARGS), help="Arguments passed to servoshell")
     p_rep.add_argument(
         "--pack",
         metavar="DIR",
@@ -560,7 +583,10 @@ def main(argv: Optional[list[str]] = None) -> int:
     p_b_pack = p_bundle_sub.add_parser("pack", help="Pack directory into bundle tarball")
     p_b_pack.add_argument("--source", default="target/generated", help="Source directory containing HTML testcases")
     p_b_pack.add_argument("--output", default="target/fuzz-bundle-latest.tar.gz", help="Output tarball path")
-    p_b_pack.add_argument("--max-tests", type=int, default=300, help="Maximum tests to bundle")
+    p_b_pack.add_argument("--max-tests", type=int, default=1200, help="Maximum tests to bundle (default: 1200)")
+    p_b_pack.add_argument("--per-generator", type=int, default=None, help="Quota per generator subdirectory (e.g. 400)")
+    p_b_pack.add_argument("--version", default=None, help="Bundle version tag recorded in manifest.json")
+    p_b_pack.add_argument("--servo-version", default=None, help="Servo binary version recorded in manifest.json")
     p_b_pack.add_argument("--binary", help="Binary to classify passing/timing-out cases")
     p_b_pack.add_argument("--timeout", type=float, default=2.0, help="Timeout threshold that marks a test as hanging")
     p_b_pack.add_argument(
@@ -589,6 +615,31 @@ def main(argv: Optional[list[str]] = None) -> int:
     p_b_dl.add_argument("--token", help="GitHub Personal Access Token")
 
     p_bundle.set_defaults(func=cmd_bundle)
+
+    p_propose = subparsers.add_parser("propose", help="Build evidence packs & issue proposals for drafted panics")
+    p_propose.add_argument("--drafts", default="target/triage/draft-signatures.json", help="Draft signatures JSON")
+    p_propose.add_argument("--corpus", default="target/panic-corpus", help="Directory holding minimized reproducers")
+    p_propose.add_argument("--binary", required=True, help="Path to servoshell binary")
+    p_propose.add_argument("--output", default="target/proposals", help="Proposals output directory")
+    p_propose.add_argument("--repo", default="servo/servo", help="Upstream repository to check for existing issues")
+    p_propose.add_argument("--max-panics", type=int, default=5, help="Maximum panics to propose per run")
+    p_propose.add_argument("--attempts", type=int, default=3, help="Reproducibility attempts")
+    p_propose.add_argument("--timeout", type=float, default=5.0, help="Per-run timeout in seconds")
+    p_propose.add_argument("--servo-args", default=" ".join(DEFAULT_SERVO_ARGS), help="Arguments passed to servoshell")
+    p_propose.add_argument("--bisect", action="store_true", help="Bisect nightlies for each proposal")
+    p_propose.add_argument("--cache-dir", default="target/bisect", help="Directory for downloaded nightlies")
+    p_propose.add_argument("--token", help="GitHub token")
+    p_propose.set_defaults(func=cmd_propose)
+
+    p_file = subparsers.add_parser("file-issues", help="File upstream GitHub issues from proposals and update signatures")
+    p_file.add_argument("--proposals", default="target/proposals", help="Directory created by `propose`")
+    p_file.add_argument("--repo", default="servo/servo", help="Target GitHub repository for filing issues")
+    p_file.add_argument("--signatures", default="signatures/rust-panic.json", help="Active signatures file to update")
+    p_file.add_argument("--history", default="signatures/fixed-history.json", help="Fixed history file to update on regressions")
+    p_file.add_argument("--token", help="GitHub token (defaults to UPSTREAM_ISSUE_TOKEN / GITHUB_TOKEN / GH_TOKEN)")
+    p_file.add_argument("--dry-run", action="store_true", help="Preview actions without creating issues or modifying JSON")
+    p_file.add_argument("--summary", help="Append a Markdown summary to this file (e.g. $GITHUB_STEP_SUMMARY)")
+    p_file.set_defaults(func=cmd_file_issues)
 
     p_val = subparsers.add_parser("validate-signatures", help="Validate rust-panic.json schema")
     p_val.add_argument("--signatures", default="signatures/rust-panic.json", help="Path to signatures file")
