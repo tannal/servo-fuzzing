@@ -4,7 +4,6 @@ from __future__ import annotations
 import json
 import re
 import shutil
-import tarfile
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
@@ -14,9 +13,14 @@ from typing import Callable, Optional
 from .bundle import download_bundle
 from .executor import DEFAULT_SERVO_ARGS, TestStatus, run_single_test
 from .github_sync import _github_headers
+from .nightly import (
+    DEFAULT_NIGHTLY_REPO,
+    default_nightly_asset,
+    extract_nightly_archive,
+    find_servoshell_binary,
+)
 
-DEFAULT_NIGHTLY_REPO = "servo/servo-nightly-builds"
-DEFAULT_ASSET = "servo-x86_64-linux-gnu.tar.gz"
+DEFAULT_ASSET = default_nightly_asset()
 UPSTREAM_REPO = "servo/servo"
 _SHA_RE = re.compile(r"servo/servo@([0-9a-f]{7,40})")
 _NIGHTLY_TAG_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -95,14 +99,15 @@ def fetch_nightlies(
 
 
 def _find_servoshell(root: Path) -> Path:
-    for name in ("servoshell", "servoshell.exe"):
-        direct = root / "servo" / name
-        if direct.exists():
-            return direct
-        found = next(root.rglob(name), None)
-        if found:
-            return found
-    raise FileNotFoundError(f"servoshell not found in {root}")
+    return find_servoshell_binary(root)
+
+
+def _archive_suffix(asset_url: str) -> str:
+    lower = asset_url.rsplit("/", 1)[-1].lower()
+    for ext in (".tar.gz", ".tgz", ".zip", ".dmg"):
+        if lower.endswith(ext):
+            return ext
+    return Path(lower).suffix or ".tar.gz"
 
 
 def build_dir_for(nightly: Nightly, cache_dir: Path) -> Path:
@@ -117,14 +122,18 @@ def install_nightly(nightly: Nightly, cache_dir: Path, token: Optional[str] = No
         return _find_servoshell(build_dir)
     except FileNotFoundError:
         pass
-    archive = download_bundle(nightly.asset_url, build_dir.with_name(f"{nightly.tag}.tar.gz"), token=token, timeout=120)
-    if build_dir.exists():
-        shutil.rmtree(build_dir)
-    build_dir.mkdir(parents=True)
-    with tarfile.open(archive, "r:gz") as tar:
-        tar.extractall(build_dir)
-    archive.unlink()
-    return _find_servoshell(build_dir)
+    suffix = _archive_suffix(nightly.asset_url)
+    archive = download_bundle(
+        nightly.asset_url,
+        build_dir.with_name(f"{nightly.tag}{suffix}"),
+        token=token,
+        timeout=120,
+    )
+    try:
+        return extract_nightly_archive(archive, build_dir)
+    finally:
+        if archive.exists():
+            archive.unlink()
 
 
 def reproduces(

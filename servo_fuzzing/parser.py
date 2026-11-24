@@ -23,7 +23,7 @@ class CrashInfo:
 
 
 def normalize_source_path(path_str: str) -> str:
-    clean = re.sub(r":\d+(?::\d+)?$", "", path_str.strip())
+    clean = re.sub(r":\d+(?::\d+)?$", "", path_str.strip()).replace("\\", "/")
 
     m = re.search(r"/(?:git/checkouts|checkouts)/[^/]+/[^/]+/(.+\.rs)", clean)
     if m:
@@ -120,12 +120,12 @@ def generate_descriptive_name(crash: CrashInfo) -> str:
 
 
 PANIC_HOOK_PATTERN = re.compile(
-    r"(?:^|\n)(?P<message>[^\n]+?)\s*\((?:thread\s+(?P<thread>.+?),\s*)?at\s+(?P<path>[^:\n\)]+)(?::(?P<line>\d+)(?::(?P<col>\d+))?)?\)",
+    r"(?:^|\n)(?P<message>[^\r\n]+?)\s*\((?:thread\s+(?P<thread>.+?),\s*)?at\s+(?P<path>(?:[a-zA-Z]:)?[^:\r\n\)]+)(?::(?P<line>\d+)(?::(?P<col>\d+))?)?\)",
     re.MULTILINE,
 )
 
 STD_PANIC_PATTERN = re.compile(
-    r"thread\s+'(?P<thread>[^']+)'\s+panicked\s+at\s+(?P<path>[^:]+):(?P<line>\d+)(?::(?P<col>\d+))?:\s*\n(?P<message>[^\n]+)",
+    r"thread\s+'(?P<thread>[^']+)'\s+panicked\s+at\s+(?P<path>(?:[a-zA-Z]:)?[^:\r\n]+):(?P<line>\d+)(?::(?P<col>\d+))?:\s*\r?\n(?P<message>[^\r\n]+)",
     re.MULTILINE,
 )
 

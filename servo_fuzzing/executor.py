@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import shlex
 import signal
 import subprocess
@@ -62,22 +63,95 @@ class SuiteSummary:
         return self.new_crashes == 0 and self.regressions == 0 and self.errors == 0
 
 
+def _is_windows() -> bool:
+    return os.name == "nt"
+
+
+def _is_url(target: str) -> bool:
+    """Return True for URL schemes (e.g., about:blank, http://) without matching Windows drive paths."""
+    return bool(re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]+:", target))
+
+
+def _split_binary_command(
+    binary: str | Path | list[str] | tuple[str, ...],
+    *,
+    is_windows: Optional[bool] = None,
+) -> list[str]:
+    """Split a binary specification into argv parts without stripping Windows backslashes."""
+    if isinstance(binary, (list, tuple)):
+        return [str(part) for part in binary]
+    if isinstance(binary, Path):
+        return [str(binary)]
+
+    raw = str(binary).strip()
+    if raw and Path(raw).exists():
+        return [raw]
+
+    win = _is_windows() if is_windows is None else is_windows
+    if win:
+        parts = shlex.split(raw, posix=False)
+        return [p[1:-1] if len(p) >= 2 and p[0] == p[-1] == '"' else p for p in parts]
+    return shlex.split(raw, posix=True)
+
+
+def _popen_kwargs(*, is_windows: Optional[bool] = None) -> dict[str, object]:
+    """Return platform-appropriate process-group creation kwargs for Popen."""
+    win = _is_windows() if is_windows is None else is_windows
+    if win:
+        flags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+        return {"creationflags": flags} if flags else {}
+    return {"start_new_session": True}
+
+
+def _terminate_process_tree(proc: subprocess.Popen, *, is_windows: Optional[bool] = None) -> int:
+    """Force-terminate a timed-out subprocess and its child process tree."""
+    win = _is_windows() if is_windows is None else is_windows
+    if win or not hasattr(os, "killpg") or not hasattr(signal, "SIGKILL"):
+        try:
+            subprocess.run(
+                ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=5,
+                check=False,
+            )
+        except (OSError, subprocess.SubprocessError):
+            pass
+        try:
+            proc.kill()
+        except OSError:
+            pass
+        return proc.returncode if proc.returncode is not None else -9
+
+    try:
+        os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+    except (ProcessLookupError, PermissionError, OSError):
+        try:
+            proc.kill()
+        except OSError:
+            pass
+    return -signal.SIGKILL
+
+
 def run_single_test(
-    binary: str | Path,
-    testcase: Path,
+    binary: str | Path | list[str] | tuple[str, ...],
+    testcase: str | Path,
     servo_args: Optional[list[str]] = None,
     timeout: float = 5.0,
     signatures: Optional[list[CrashSignature]] = None,
     fixed_signatures: Optional[list[CrashSignature]] = None,
     env: Optional[dict[str, str]] = None,
 ) -> TestResult:
-    testcase_path = Path(testcase).resolve()
-    args = servo_args if servo_args is not None else ["-xfz"]
-
-    if isinstance(binary, (list, tuple)):
-        cmd = list(binary) + list(args) + [str(testcase_path)]
+    raw_target = str(testcase)
+    if _is_url(raw_target):
+        testcase_arg = raw_target
+        testcase_path = testcase if isinstance(testcase, Path) else Path(raw_target)
     else:
-        cmd = shlex.split(str(binary).strip()) + list(args) + [str(testcase_path)]
+        testcase_path = Path(testcase).resolve()
+        testcase_arg = str(testcase_path)
+
+    args = servo_args if servo_args is not None else ["-xfz"]
+    cmd = _split_binary_command(binary) + list(args) + [testcase_arg]
 
     run_env = os.environ.copy()
     run_env["RUST_BACKTRACE"] = "1"
@@ -96,8 +170,10 @@ def run_single_test(
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
-            start_new_session=True,
+            encoding="utf-8",
+            errors="replace",
             env=run_env,
+            **_popen_kwargs(),
         )
         try:
             out, err = proc.communicate(timeout=timeout)
@@ -106,14 +182,22 @@ def run_single_test(
             exit_code = proc.returncode
         except subprocess.TimeoutExpired:
             timed_out = True
+            fallback_exit_code = _terminate_process_tree(proc)
             try:
-                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-            except (ProcessLookupError, PermissionError):
-                pass
-            out, err = proc.communicate()
+                out, err = proc.communicate(timeout=5)
+            except subprocess.TimeoutExpired:
+                try:
+                    proc.kill()
+                except OSError:
+                    pass
+                out, err = "", ""
             stdout_data = out or ""
             stderr_data = err or ""
-            exit_code = -signal.SIGKILL
+            exit_code = (
+                fallback_exit_code
+                if not _is_windows()
+                else (proc.returncode if proc.returncode is not None else fallback_exit_code)
+            )
     except Exception as exc:
         return TestResult(
             testcase=testcase_path,

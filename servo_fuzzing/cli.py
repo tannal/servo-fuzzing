@@ -23,6 +23,12 @@ from .evidence import (
 from .executor import DEFAULT_SERVO_ARGS
 from .generators import GeneratorManager
 from .github_sync import sync_signatures_from_github
+from .nightly import (
+    DEFAULT_NIGHTLY_REPO,
+    detect_platform,
+    download_latest_nightly,
+    nightly_download_url,
+)
 from .proposals import (
     file_upstream_issues,
     format_filing_summary,
@@ -423,6 +429,38 @@ def cmd_validate_signatures(args: argparse.Namespace) -> int:
         return 1
 
 
+def cmd_download_nightly(args: argparse.Namespace) -> int:
+    try:
+        if args.print_target:
+            target = detect_platform(os_override=args.os_override, arch_override=args.arch_override)
+            url = nightly_download_url(target.asset_name, repo=args.repo, tag=args.tag)
+            print(f"os={target.os_name}")
+            print(f"arch={target.arch}")
+            print(f"asset={target.asset_name}")
+            print(f"format={target.archive_format}")
+            print(f"binary={target.binary_name}")
+            print(f"url={url}")
+            if target.note:
+                print(f"note={target.note}")
+            return 0
+
+        download_latest_nightly(
+            output_dir=Path(args.output),
+            tag=args.tag,
+            repo=args.repo,
+            os_override=args.os_override,
+            arch_override=args.arch_override,
+            token=args.token,
+            verify=not args.no_verify,
+            download_only=args.download_only,
+            keep_archive=args.keep_archive,
+        )
+        return 0
+    except Exception as exc:
+        print(f"Error downloading Servo nightly: {exc}", file=sys.stderr)
+        return 1
+
+
 def cmd_import(args: argparse.Namespace) -> int:
     from .importer import import_crashes
 
@@ -660,6 +698,22 @@ def main(argv: Optional[list[str]] = None) -> int:
     p_import.add_argument("--reduce-timeout", type=float, default=2.0, help="Per-run timeout during minimization")
     p_import.add_argument("--lookup-github", action="store_true", help="Search servo/servo open and closed issues to deduplicate and detect regressions")
     p_import.set_defaults(func=cmd_import)
+
+    p_dl_nightly = subparsers.add_parser(
+        "download-nightly",
+        help="Detect OS/arch and download the latest Servo nightly build",
+    )
+    p_dl_nightly.add_argument("-o", "--output", default="servo", help="Destination directory (default: servo)")
+    p_dl_nightly.add_argument("--tag", default="latest", help="Nightly release tag (default: latest)")
+    p_dl_nightly.add_argument("--repo", default=DEFAULT_NIGHTLY_REPO, help=f"GitHub releases repo (default: {DEFAULT_NIGHTLY_REPO})")
+    p_dl_nightly.add_argument("--os", dest="os_override", default=None, help="Override target OS (linux, macos, windows)")
+    p_dl_nightly.add_argument("--arch", dest="arch_override", default=None, help="Override target CPU arch (x86_64, aarch64)")
+    p_dl_nightly.add_argument("--token", default=None, help="GitHub token (defaults to GITHUB_TOKEN / GH_TOKEN)")
+    p_dl_nightly.add_argument("--no-verify", action="store_true", help="Skip .sha256 checksum verification")
+    p_dl_nightly.add_argument("--download-only", action="store_true", help="Save archive without extracting")
+    p_dl_nightly.add_argument("--keep-archive", action="store_true", help="Keep downloaded archive after extraction")
+    p_dl_nightly.add_argument("--print-target", action="store_true", help="Print detected target and URL without downloading")
+    p_dl_nightly.set_defaults(func=cmd_download_nightly)
 
     parsed = parser.parse_args(argv)
     if not hasattr(parsed, "func") or not parsed.func:

@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import os
 import re
-import signal
 import subprocess
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
+
+from .executor import _is_windows, _popen_kwargs, _terminate_process_tree
 
 
 @dataclass
@@ -39,19 +40,30 @@ def run_single_instance(
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
-            start_new_session=True,
+            encoding="utf-8",
+            errors="replace",
             env=run_env,
+            **_popen_kwargs(),
         )
         try:
             out, err = proc.communicate(timeout=timeout)
             return proc.returncode, (out or "") + "\n" + (err or "")
         except subprocess.TimeoutExpired:
+            fallback_exit_code = _terminate_process_tree(proc)
             try:
-                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-            except (ProcessLookupError, PermissionError):
-                pass
-            out, err = proc.communicate()
-            return -signal.SIGKILL, (out or "") + "\n" + (err or "")
+                out, err = proc.communicate(timeout=5)
+            except subprocess.TimeoutExpired:
+                try:
+                    proc.kill()
+                except OSError:
+                    pass
+                out, err = "", ""
+            exit_code = (
+                fallback_exit_code
+                if not _is_windows()
+                else (proc.returncode if proc.returncode is not None else fallback_exit_code)
+            )
+            return exit_code, (out or "") + "\n" + (err or "")
     except Exception as exc:
         return -1, str(exc)
 

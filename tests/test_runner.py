@@ -8,6 +8,7 @@ from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
+from servo_fuzzing.executor import TestResult, TestStatus
 from servo_fuzzing.runner import main as runner_main
 
 
@@ -112,6 +113,28 @@ class TestTestcaseSelection(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("Excluded 1 bundled timeout testcase(s)", out)
         self.assertIn("Found 1 test cases", out)
+
+    def test_health_check_error_prints_error_message_without_output(self):
+        cases = self.root / "cases"
+        cases.mkdir()
+        (cases / "a.html").write_text("<p>")
+        failed_health = TestResult(
+            testcase=Path("about:blank"),
+            status=TestStatus.ERROR,
+            exit_code=None,
+            duration=0.01,
+            combined_output="",
+            error_message="[WinError 2] The system cannot find the file specified",
+        )
+        out = io.StringIO()
+        with patch("servo_fuzzing.runner.run_single_test", return_value=failed_health), redirect_stdout(out):
+            code = runner_main(
+                ["--binary", str(self.binary), "--output", str(self.root / "out"), "--testcases", str(cases)]
+            )
+        rendered = out.getvalue()
+        self.assertEqual(code, 2)
+        self.assertIn("FATAL: servoshell failed health check", rendered)
+        self.assertIn("[WinError 2] The system cannot find the file specified", rendered)
 
 
 if __name__ == "__main__":

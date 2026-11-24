@@ -65,7 +65,14 @@ def collect_testcases(test_dirs: list[str | Path], extensions: list[str]) -> lis
 
 def get_servo_version(binary: Path) -> str:
     try:
-        res = subprocess.run([str(binary), "--version"], capture_output=True, text=True, timeout=5)
+        res = subprocess.run(
+            [str(binary), "--version"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=5,
+        )
         return res.stdout.strip() or res.stderr.strip() or "unknown"
     except Exception:
         return "unknown"
@@ -238,8 +245,14 @@ def main(argv: Optional[list[str]] = None) -> int:
         signatures=signatures,
     )
     if health_result.status in (TestStatus.NEW_CRASH, TestStatus.ERROR):
-        print("FATAL: servoshell failed health check on about:blank!")
-        print(health_result.combined_output)
+        print(
+            f"FATAL: servoshell failed health check on about:blank! "
+            f"(status={health_result.status.value}, exit_code={health_result.exit_code})"
+        )
+        if health_result.error_message:
+            print(f"Error: {health_result.error_message}")
+        if health_result.combined_output:
+            print(health_result.combined_output)
         return 2
     print("Health check passed.")
 

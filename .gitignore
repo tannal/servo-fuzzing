@@ -4,7 +4,9 @@
 Minerva/
 domato/
 freedom/
-servo-x86_64-linux-gnu.tar.gz
+servo-*.tar.gz
+servo-*.dmg
+servo-*.zip
 servo/
 target/
 *.tar.gz

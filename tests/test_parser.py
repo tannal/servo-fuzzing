@@ -227,6 +227,45 @@ stack backtrace:
         idx2 = normalize_panic_message("range start index 128 out of range for slice of length 10")
         self.assertEqual(idx1, idx2)
 
+    def test_windows_backslash_and_drive_letter_paths(self):
+        self.assertEqual(
+            normalize_source_path(r"components\script\dom\document.rs:42"),
+            "components/script/dom/document.rs",
+        )
+        self.assertEqual(
+            normalize_source_path(
+                r"C:\Users\runner\.cargo\registry\src\index.crates.io-6f17d22bba15001f\euclid-0.22.14\src\size.rs:100:5"
+            ),
+            "euclid-0.22.14/src/size.rs",
+        )
+
+        hook_output = (
+            "called `Option::unwrap()` on a `None` value "
+            r"(thread Script#1, at C:\Users\runner\.cargo\registry\src\index.crates.io-6f17d22bba15001f\euclid-0.22.14\src\size.rs:100:5)"
+            "\r\n   0: servoshell::backtrace::print\r\n"
+            "   1: layout::stacking::build\r\n"
+        )
+        hook_crash = parse_crash(hook_output)
+        self.assertIsNotNone(hook_crash)
+        assert hook_crash is not None
+        self.assertEqual(hook_crash.source_file, "euclid-0.22.14/src/size.rs")
+        self.assertEqual(hook_crash.line, 100)
+        self.assertEqual(hook_crash.column, 5)
+        self.assertEqual(hook_crash.thread, "Script#1")
+
+        std_output = (
+            r"thread 'Script#2' panicked at components\script\dom\document.rs:42:9:"
+            "\r\nsome windows panic\r\n"
+            "   0: layout::process\r\n"
+        )
+        std_crash = parse_crash(std_output)
+        self.assertIsNotNone(std_crash)
+        assert std_crash is not None
+        self.assertEqual(std_crash.source_file, "components/script/dom/document.rs")
+        self.assertEqual(std_crash.line, 42)
+        self.assertEqual(std_crash.column, 9)
+        self.assertEqual(std_crash.message, "some windows panic")
+
 
 if __name__ == "__main__":
     unittest.main()

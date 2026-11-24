@@ -30,10 +30,12 @@ sudo apt-get install -y \
   gstreamer1.0-gl libxkbcommon0
 ```
 
-Download the latest Linux `servoshell` nightly into `./servo/servoshell`:
+Download the latest `servoshell` nightly for your OS and CPU architecture (`linux` x86_64/aarch64, `macos` Apple Silicon/Intel, `windows` x86_64) into `./servo/`:
 
 ```bash
-./download-latest-nightly.sh
+python3 download-latest-nightly.py
+# Or on Linux/macOS: ./download-latest-nightly.sh
+# Or via the CLI:    ./servo-fuzzing download-nightly
 ```
 
 ### Replay a Bundle Against a Local Servo Build
@@ -210,6 +212,7 @@ Entrypoints: `servo-fuzzing <subcommand>`, plus stdlib-compatible module entrypo
 | Command | Role |
 |---|---|
 | `run` | Replay testcases or a bundle via `servo_fuzzing.runner` (`--bundle`, `--timeouts include\|exclude`, `--config`, `--testcases`) |
+| `download-nightly` | Auto-detect OS/CPU architecture and download + verify + extract the matching `servoshell` nightly |
 | `setup-generators` | Clone or check `domato`, `freedom`, and `minerva` in `generators/` |
 | `generate` | Generate HTML testcases (`--tool domato\|freedom\|minerva`, `-n`, `-o`) |
 | `bundle pack\|unpack\|download` | Pack balanced versioned bundles with `manifest.json`, unpack, or download |

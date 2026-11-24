@@ -181,9 +181,17 @@ def import_crashes(
         timeout=10.0,
     )
     if health.status in (TestStatus.NEW_CRASH, TestStatus.ERROR):
-        print("FATAL: servoshell failed health check on about:blank!")
-        print(health.combined_output)
-        return {"fatal_error": True, "error": "Health check on about:blank failed"}
+        print(
+            f"FATAL: servoshell failed health check on about:blank! "
+            f"(status={health.status.value}, exit_code={health.exit_code})"
+        )
+        if health.error_message:
+            print(f"Error: {health.error_message}")
+        if health.combined_output:
+            print(health.combined_output)
+        detail = health.error_message or health.combined_output
+        err_msg = f"Health check on about:blank failed: {detail}" if detail else "Health check on about:blank failed"
+        return {"fatal_error": True, "error": err_msg}
     print("Health check passed.")
 
     servo_version = get_servo_version(binary_path)
