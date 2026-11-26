@@ -3,6 +3,7 @@ from __future__ import annotations
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -45,15 +46,19 @@ def reduce_delta_lines(
     timeout: float = 3.0,
     servo_args: Optional[list[str]] = None,
     attempts: int = 1,
+    max_seconds: Optional[float] = None,
 ) -> Path:
     if attempts < 1 or timeout <= 0:
         raise ValueError("attempts and timeout must be positive")
+    if max_seconds is not None and max_seconds <= 0:
+        raise ValueError("max_seconds must be positive")
 
     args = servo_args if servo_args is not None else ["-xfz", "--enable-experimental-web-platform-features"]
     lines = testcase.read_text(encoding="utf-8", errors="replace").splitlines(keepends=True)
     out_file = output_path or testcase.with_name(f"{testcase.stem}-reduced.html")
     out_file.parent.mkdir(parents=True, exist_ok=True)
     runs = 0
+    start_time = time.perf_counter()
 
     with tempfile.NamedTemporaryFile(
         prefix=f".{out_file.stem}-",
@@ -95,6 +100,13 @@ def reduce_delta_lines(
             changed = False
             idx = 0
             while idx < len(lines):
+                if max_seconds is not None and (time.perf_counter() - start_time) >= max_seconds:
+                    print(
+                        f"Reduction time budget ({max_seconds:.0f}s) reached; keeping best checkpoint "
+                        f"({len(lines)} lines, {runs} runs).",
+                        flush=True,
+                    )
+                    return out_file
                 candidate = lines[:idx] + lines[idx + chunk:]
                 if test_lines(candidate):
                     lines = candidate

@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from servo_fuzzing.executor import (
+    TestResult,
     TestStatus,
     _is_url,
     _split_binary_command,
@@ -222,6 +223,33 @@ else:
             check=False,
         )
         proc.kill.assert_called_once()
+
+    def test_run_suite_retries_intermittent_crash(self):
+        timeout_res = TestResult(testcase=Path("flaky.html"), status=TestStatus.TIMEOUT, duration=1.0)
+        crash_res = TestResult(
+            testcase=Path("flaky.html"),
+            status=TestStatus.NEW_CRASH,
+            exit_code=101,
+            duration=0.5,
+        )
+        pass_res = TestResult(testcase=Path("flaky.html"), status=TestStatus.PASS, duration=0.1)
+
+        with patch(
+            "servo_fuzzing.executor.run_single_test",
+            side_effect=[timeout_res, crash_res, pass_res],
+        ) as mock_single:
+            summary = run_suite(
+                binary="servoshell",
+                testcases=[Path("flaky.html")],
+                servo_args=[],
+                timeout=1.0,
+                concurrency=1,
+                attempts=3,
+            )
+
+        self.assertEqual(mock_single.call_count, 2)
+        self.assertEqual(summary.new_crashes, 1)
+        self.assertEqual(summary.timeouts, 0)
 
 
 if __name__ == "__main__":

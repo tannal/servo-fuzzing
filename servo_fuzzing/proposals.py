@@ -68,6 +68,7 @@ def propose_panics(
     binary: Optional[Path] = None,
     bisect: bool = False,
     token: Optional[str] = None,
+    fixed_history_path: Optional[Path] = None,
 ) -> list[dict[str, Any]]:
     """Build per-panic proposal directories under `out_dir` from `drafts_path`.
 
@@ -97,6 +98,11 @@ def propose_panics(
         )
 
     lookup = find_existing or (lambda msg, src: find_upstream_issue(msg, src, repo=target_repo, token=token))
+    fixed_sigs = (
+        load_signatures(Path(fixed_history_path))
+        if fixed_history_path and Path(fixed_history_path).exists()
+        else []
+    )
 
     proposals: list[dict[str, Any]] = []
     used_ids: set[str] = set()
@@ -148,8 +154,14 @@ def propose_panics(
             print(f"Skipping {draft_id}: reproducer missing in {corpus_dir}")
             continue
 
-        is_regression = bool(upstream and upstream.get("state") == "closed")
-        regresses_issue = upstream["url"] if is_regression and upstream else None
+        fixed_match = find_matching_signature_entry(msg, src, fixed_sigs) if fixed_sigs else None
+        upstream_closed = upstream if upstream and upstream.get("state") == "closed" else None
+        is_regression = bool(upstream_closed or fixed_match)
+        regresses_issue = (
+            upstream_closed["url"]
+            if upstream_closed
+            else (fixed_match["issue"] if fixed_match else None)
+        )
         status = "regression" if is_regression else "new"
         if is_regression:
             cleaned_sig["issue"] = regresses_issue or cleaned_sig["issue"]

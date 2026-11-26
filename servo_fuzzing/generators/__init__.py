@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Optional
 
@@ -52,27 +54,47 @@ class GeneratorManager:
         output_dir: Path,
         count_per_generator: int = 100,
         auto_clone: bool = False,
+        max_workers: Optional[int] = None,
     ) -> dict[str, list[Path]]:
         output_dir = Path(output_dir).resolve()
-        results: dict[str, list[Path]] = {}
 
         if auto_clone:
             self.clone_all()
 
+        active: list[tuple[str, BaseGenerator, Path]] = []
         for name, gen in self.generators.items():
             if not gen.is_installed:
-                print(f"Notice: Generator '{name}' is not installed at {gen.local_path}. Skipping.")
+                print(f"Notice: Generator '{name}' is not installed at {gen.local_path}. Skipping.", flush=True)
                 continue
-            gen_out = output_dir / name
-            print(f"Running {name} to generate {count_per_generator} testcases in {gen_out}...")
-            try:
-                cases = gen.generate(output_dir=gen_out, count=count_per_generator)
-                results[name] = cases
-                print(f"Generated {len(cases)} testcases for {name}.")
-            except Exception as exc:
-                print(f"Error running generator '{name}': {exc}")
+            active.append((name, gen, output_dir / name))
 
-        return results
+        if not active:
+            return {}
+
+        workers = len(active) if max_workers is None or max_workers <= 0 else min(len(active), max_workers)
+
+        def _run_one(name: str, gen: BaseGenerator, gen_out: Path) -> tuple[str, list[Path], float]:
+            print(f"Running {name} to generate {count_per_generator} testcases in {gen_out}...", flush=True)
+            t0 = time.perf_counter()
+            cases = gen.generate(output_dir=gen_out, count=count_per_generator)
+            return name, cases, time.perf_counter() - t0
+
+        collected: dict[str, list[Path]] = {}
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = {
+                pool.submit(_run_one, name, gen, gen_out): name
+                for name, gen, gen_out in active
+            }
+            for future in as_completed(futures):
+                name = futures[future]
+                try:
+                    _, cases, elapsed = future.result()
+                    collected[name] = cases
+                    print(f"Generated {len(cases)} testcases for {name} in {elapsed:.2f}s.", flush=True)
+                except Exception as exc:
+                    print(f"Error running generator '{name}': {exc}", flush=True)
+
+        return {name: collected[name] for name, _, _ in active if name in collected}
 
 
 __all__ = [

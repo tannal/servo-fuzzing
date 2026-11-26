@@ -73,3 +73,30 @@ class TestReducer(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, 'Baseline'):
                     reduce_delta_lines('servo', original, output_path=output)
             self.assertEqual(output.read_text(), 'previous')
+
+    def test_max_seconds_stops_and_preserves_best_checkpoint(self):
+        with tempfile.TemporaryDirectory() as directory:
+            original = Path(directory) / 'input.html'
+            output = Path(directory) / 'reduced.html'
+            original.write_text('noise1\nnoise2\ntrigger\n')
+            ticks = iter([0.0, 0.2, 1.5, 2.0])
+
+            def fake_run(**args):
+                text = args['testcase'].read_text()
+                ok = 'trigger' in text
+                return SimpleNamespace(crash_info=SimpleNamespace(message='target') if ok else None)
+
+            with (
+                patch('servo_fuzzing.reducer.time.perf_counter', side_effect=lambda: next(ticks, 5.0)),
+                patch('servo_fuzzing.reducer.run_single_test', side_effect=fake_run),
+            ):
+                result = reduce_delta_lines(
+                    'servo',
+                    original,
+                    target_message='target',
+                    output_path=output,
+                    max_seconds=1.0,
+                )
+            self.assertEqual(result, output)
+            self.assertTrue(output.is_file())
+            self.assertIn('trigger', output.read_text())

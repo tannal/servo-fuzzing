@@ -286,6 +286,33 @@ def run_single_test(
     )
 
 
+def _run_test_with_retries(
+    binary: str | Path,
+    testcase: Path,
+    servo_args: Optional[list[str]] = None,
+    timeout: float = 5.0,
+    signatures: Optional[list[CrashSignature]] = None,
+    fixed_signatures: Optional[list[CrashSignature]] = None,
+    attempts: int = 1,
+) -> TestResult:
+    tries = max(1, attempts)
+    last_result: Optional[TestResult] = None
+    for _ in range(tries):
+        res = run_single_test(
+            binary=binary,
+            testcase=testcase,
+            servo_args=servo_args,
+            timeout=timeout,
+            signatures=signatures,
+            fixed_signatures=fixed_signatures,
+        )
+        last_result = res
+        if res.status not in (TestStatus.PASS, TestStatus.TIMEOUT):
+            return res
+    assert last_result is not None
+    return last_result
+
+
 def run_suite(
     binary: str | Path,
     testcases: list[Path],
@@ -295,6 +322,7 @@ def run_suite(
     signatures: Optional[list[CrashSignature]] = None,
     fixed_signatures: Optional[list[CrashSignature]] = None,
     on_result: Optional[Callable[[TestResult, int, int], None]] = None,
+    attempts: int = 1,
 ) -> SuiteSummary:
     start_time = time.perf_counter()
     summary = SuiteSummary(total=len(testcases))
@@ -304,13 +332,14 @@ def run_suite(
     with ThreadPoolExecutor(max_workers=workers) as executor:
         future_to_case = {
             executor.submit(
-                run_single_test,
+                _run_test_with_retries,
                 binary=binary,
                 testcase=tc,
                 servo_args=servo_args,
                 timeout=timeout,
                 signatures=signatures,
                 fixed_signatures=fixed_signatures,
+                attempts=attempts,
             ): tc
             for tc in testcases
         }

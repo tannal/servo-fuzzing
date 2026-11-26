@@ -121,6 +121,28 @@ def _unique_signature_id(
     return sig_id
 
 
+def _probe_reproducibility(
+    binary: str | Path,
+    testcase: Path,
+    entry: CrashSignature,
+    timeout: float,
+    args: list[str],
+    probes: int = 3,
+) -> int:
+    from .executor import run_single_test
+
+    probe_entry: CrashSignature = {
+        **entry,
+        "stack_frames": [f for f in entry.get("stack_frames") or [] if f != "<fill_in_distinctive_frame>"],
+    }
+    hits = 0
+    for _ in range(probes):
+        res = run_single_test(binary=binary, testcase=testcase, servo_args=args, timeout=timeout)
+        if res.crash_info is not None and match(res.crash_info, [probe_entry]) == probe_entry["id"]:
+            hits += 1
+    return hits
+
+
 def _save_corpus_repro(
     crash_dir: Path,
     corpus_path: Path,
@@ -128,6 +150,7 @@ def _save_corpus_repro(
     reduce_binary: Optional[str | Path],
     reduce_timeout: float,
     args: list[str],
+    reduce_max_seconds: Optional[float] = None,
 ) -> None:
     repro_files = [
         f for f in crash_dir.iterdir()
@@ -138,8 +161,24 @@ def _save_corpus_repro(
     repro_file = repro_files[0]
     target_html = corpus_path / f"{entry['id']}.html"
     if reduce_binary and Path(reduce_binary).exists():
-        print(f"Minimizing reproducer for {entry['id']} -> {target_html.name}...")
         try:
+            hits = _probe_reproducibility(reduce_binary, repro_file, entry, reduce_timeout, args, probes=3)
+            if hits == 0:
+                print(
+                    f"Skipping delta reduction for {entry['id']} (0/3 repros); "
+                    f"saving original reproducer: {target_html.name}"
+                )
+                shutil.copy2(repro_file, target_html)
+                return
+            if hits == 1:
+                print(
+                    f"Skipping delta reduction for intermittent panic {entry['id']} (1/3 repros); "
+                    f"saving original reproducer: {target_html.name}"
+                )
+                shutil.copy2(repro_file, target_html)
+                return
+
+            print(f"Minimizing reproducer for {entry['id']} -> {target_html.name}...")
             from .reducer import reduce_delta_lines
             reduce_delta_lines(
                 binary=reduce_binary,
@@ -148,6 +187,8 @@ def _save_corpus_repro(
                 output_path=target_html,
                 timeout=reduce_timeout,
                 servo_args=args,
+                attempts=1 if hits >= 3 else 2,
+                max_seconds=reduce_max_seconds,
             )
         except Exception as e:
             print(f"Reduction failed ({e}), saving original reproducer: {target_html.name}")
@@ -185,6 +226,8 @@ def sync_draft_signatures(
     lookup_github: bool = False,
     repo: str = "servo/servo",
     token: Optional[str] = None,
+    reduce_max_seconds: Optional[float] = None,
+    include_regressions: bool = False,
 ) -> list[CrashSignature]:
     """Deduplicate the new crashes of a triage run into `drafts_path`.
 
@@ -247,8 +290,29 @@ def sync_draft_signatures(
             if reg_key not in seen_regressions:
                 seen_regressions.add(reg_key)
                 print(f"[REGRESSION] {fixed_match['id']} matches previously closed issue: {fixed_match['issue']}")
+                reg_entry: CrashSignature = {
+                    "id": fixed_match["id"],
+                    "message": msg,
+                    "source_file": src,
+                    "stack_frames": draft.get("stack_frames") or fixed_match.get("stack_frames") or [],
+                    "issue": fixed_match["issue"],
+                }
                 if corpus_path:
-                    _save_corpus_repro(crash_dir, corpus_path, fixed_match, reduce_binary, reduce_timeout, args)
+                    _save_corpus_repro(
+                        crash_dir,
+                        corpus_path,
+                        reg_entry,
+                        reduce_binary,
+                        reduce_timeout,
+                        args,
+                        reduce_max_seconds=reduce_max_seconds,
+                    )
+                if include_regressions:
+                    if corpus_path:
+                        (corpus_path / f"{reg_entry['id']}.json").write_text(
+                            json.dumps(reg_entry, indent=2) + "\n", encoding="utf-8"
+                        )
+                    added.append(reg_entry)
             continue
 
         issue_url = draft.get("issue") or "https://github.com/servo/servo/issues/TODO"
@@ -279,7 +343,15 @@ def sync_draft_signatures(
         print(f"New panic signature draft: {sig_id} ({src}) -> {issue_url}")
 
         if corpus_path:
-            _save_corpus_repro(crash_dir, corpus_path, new_entry, reduce_binary, reduce_timeout, args)
+            _save_corpus_repro(
+                crash_dir,
+                corpus_path,
+                new_entry,
+                reduce_binary,
+                reduce_timeout,
+                args,
+                reduce_max_seconds=reduce_max_seconds,
+            )
             (corpus_path / f"{sig_id}.json").write_text(json.dumps(new_entry, indent=2) + "\n", encoding="utf-8")
 
     if added:

@@ -189,6 +189,7 @@ def cmd_reduce(args: argparse.Namespace) -> int:
             output_path=out,
             timeout=args.timeout,
             attempts=args.attempts,
+            max_seconds=getattr(args, "max_seconds", None),
         )
     except ValueError as exc:
         print(f"Error: {exc}")
@@ -336,6 +337,8 @@ def cmd_sync_drafts(args: argparse.Namespace) -> int:
         reduce_binary=args.reduce_binary if getattr(args, "reduce_binary", None) else None,
         reduce_timeout=args.reduce_timeout if getattr(args, "reduce_timeout", None) else 2.0,
         lookup_github=getattr(args, "lookup_github", False),
+        reduce_max_seconds=getattr(args, "reduce_max_seconds", None),
+        include_regressions=getattr(args, "include_regressions", False),
     )
     print(f"Found {len(added)} unique new panic signature(s) not in {args.signatures}")
     return 0
@@ -394,6 +397,7 @@ def cmd_propose(args: argparse.Namespace) -> int:
         target_repo=args.repo,
         limit=args.max_panics,
         token=args.token,
+        fixed_history_path=Path(args.history) if getattr(args, "history", None) else None,
     )
     return 0
 
@@ -475,8 +479,11 @@ def cmd_import(args: argparse.Namespace) -> int:
         concurrency=args.jobs,
         max_tests=args.max_tests,
         reduce=not getattr(args, "no_reduce", False),
-        reduce_timeout=args.reduce_timeout,
+        reduce_timeout=getattr(args, "reduce_timeout", None),
         lookup_github=getattr(args, "lookup_github", False),
+        attempts=getattr(args, "attempts", 3),
+        reduce_max_seconds=getattr(args, "reduce_max_seconds", 120.0),
+        include_regressions=getattr(args, "include_regressions", False),
     )
     if result.get("fatal_error"):
         return 2
@@ -543,6 +550,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     p_reduce.add_argument("-o", "--output", help="Output path for reduced testcase")
     p_reduce.add_argument("--timeout", type=float, default=3.0, help="Per-run timeout in seconds")
     p_reduce.add_argument("--attempts", type=int, default=1, help="Runs per candidate for intermittent panics")
+    p_reduce.add_argument("--max-seconds", type=float, default=None, help="Wall-clock budget in seconds for reduction")
     p_reduce.set_defaults(func=cmd_reduce)
 
     p_bisect = subparsers.add_parser("bisect", help="Bisect a crash across Servo nightly builds")
@@ -612,6 +620,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     p_sync_drafts.add_argument("--corpus", default=None, help="Optional directory to save deduplicated reproducer HTMLs (e.g. target/panic-corpus)")
     p_sync_drafts.add_argument("--reduce-binary", default=None, help="Optional binary to auto-reduce reproducers")
     p_sync_drafts.add_argument("--reduce-timeout", type=float, default=2.0, help="Per-run timeout during reduction")
+    p_sync_drafts.add_argument("--reduce-max-seconds", type=float, default=None, help="Wall-clock budget in seconds per reduced panic")
+    p_sync_drafts.add_argument("--include-regressions", action="store_true", help="Include fixed-history regressions in draft-signatures.json")
     p_sync_drafts.add_argument("--lookup-github", action="store_true", help="Search servo/servo open and closed issues to link existing issues")
     p_sync_drafts.set_defaults(func=cmd_sync_drafts)
 
@@ -666,6 +676,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     p_propose.add_argument("--servo-args", default=" ".join(DEFAULT_SERVO_ARGS), help="Arguments passed to servoshell")
     p_propose.add_argument("--bisect", action="store_true", help="Bisect nightlies for each proposal")
     p_propose.add_argument("--cache-dir", default="target/bisect", help="Directory for downloaded nightlies")
+    p_propose.add_argument("--history", default="signatures/fixed-history.json", help="Fixed history JSON for regression detection")
     p_propose.add_argument("--token", help="GitHub token")
     p_propose.set_defaults(func=cmd_propose)
 
@@ -691,11 +702,14 @@ def main(argv: Optional[list[str]] = None) -> int:
     p_import.add_argument("--drafts", default=None, help="Output file for the draft signatures (default: <output>/draft-signatures.json)")
     p_import.add_argument("--output", default="target/triage", help="Triage output directory")
     p_import.add_argument("-j", "--jobs", type=int, default=4, help="Parallel worker threads")
-    p_import.add_argument("--timeout", type=float, default=2.0, help="Per-test timeout in seconds")
+    p_import.add_argument("--timeout", type=float, default=6.0, help="Per-test timeout in seconds (default: 6.0)")
+    p_import.add_argument("--attempts", type=int, default=3, help="Max triage attempts per suspect testcase (retries non-crashing runs)")
     p_import.add_argument("--max-tests", type=int, default=None, help="Maximum number of testcases to process")
     p_import.add_argument("--reduce", action="store_true", default=True, help="Auto-minimize unique crashing reproducers (default: True)")
     p_import.add_argument("--no-reduce", action="store_true", help="Disable reproducer minimization")
-    p_import.add_argument("--reduce-timeout", type=float, default=2.0, help="Per-run timeout during minimization")
+    p_import.add_argument("--reduce-timeout", type=float, default=None, help="Per-run timeout during minimization (defaults to --timeout)")
+    p_import.add_argument("--reduce-max-seconds", type=float, default=120.0, help="Wall-clock budget in seconds per reduced panic")
+    p_import.add_argument("--include-regressions", action="store_true", help="Emit fixed-history regressions into draft-signatures.json")
     p_import.add_argument("--lookup-github", action="store_true", help="Search servo/servo open and closed issues to deduplicate and detect regressions")
     p_import.set_defaults(func=cmd_import)
 

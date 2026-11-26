@@ -73,6 +73,15 @@ class TestImporter(unittest.TestCase):
             limited = find_import_testcases([tmp_path], max_tests=1)
             self.assertEqual(len(limited), 1)
 
+    def test_find_import_testcases_dedupes_repro_duplicates(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            sub = Path(tmp_dir) / "graph-cache-should-have"
+            sub.mkdir()
+            (sub / "repro.html").write_text("same crash payload", encoding="utf-8")
+            (sub / "graph-cache-should-have.html").write_text("same crash payload", encoding="utf-8")
+            cases = find_import_testcases([Path(tmp_dir)])
+            self.assertEqual([c.name for c in cases], ["graph-cache-should-have.html"])
+
     @patch("servo_fuzzing.importer.run_single_test")
     @patch("servo_fuzzing.importer.run_suite")
     def test_import_crashes_deduplication(self, mock_run_suite, mock_run_single):

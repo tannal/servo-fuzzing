@@ -235,6 +235,13 @@ def render_issue(evidence: Evidence, analysis: Optional[str] = None) -> str:
     except OSError:
         content = f"<!-- Failed to read {evidence.testcase} -->"
 
+    repro_line = f"**Reproducibility**: {evidence.crashes}/{evidence.attempts} runs"
+    if evidence.attempts > 1 and evidence.crashes < evidence.attempts:
+        repro_line += (
+            f" (intermittent — try `servo-fuzzing reproduce {evidence.testcase.name} "
+            f"--binary ./servo/servoshell --mode parallel --count 20`)"
+        )
+
     lines = [
         f"### Title: `{title}`",
         "",
@@ -247,7 +254,7 @@ def render_issue(evidence: Evidence, analysis: Optional[str] = None) -> str:
         "",
         f"**Command**: `{evidence.command}`",
         f"**Servo Version**: `{evidence.servo_version}`",
-        f"**Reproducibility**: {evidence.crashes}/{evidence.attempts} runs",
+        repro_line,
     ]
     if evidence.regresses_issue:
         lines.append(f"**Regresses**: {evidence.regresses_issue}")
@@ -366,21 +373,27 @@ def gather_evidence(
     fetch_json, fetch_text = github_fetchers(token)
 
     if bisect:
-        try:
-            evidence.bisect, _ = run_bisect(
-                testcase=testcase,
-                pattern=re.escape(crash.message) if crash else None,
-                good=good,
-                bad=bad,
-                attempts=attempts,
-                timeout=timeout,
-                servo_args=args,
-                cache_dir=Path(cache_dir),
-                token=token,
+        if evidence.attempts >= 3 and evidence.crashes * 2 < evidence.attempts:
+            print(
+                f"Skipping bisect for intermittent crash ({evidence.crashes}/{evidence.attempts} reproductions); "
+                "binary search on flaky crashes is unreliable."
             )
-            evidence.commits = fetch_range_commits(evidence.bisect, crash, fetch_json)
-        except Exception as exc:
-            print(f"Warning: bisect failed, report has no regression range: {exc}")
+        else:
+            try:
+                evidence.bisect, _ = run_bisect(
+                    testcase=testcase,
+                    pattern=re.escape(crash.message) if crash else None,
+                    good=good,
+                    bad=bad,
+                    attempts=attempts,
+                    timeout=timeout,
+                    servo_args=args,
+                    cache_dir=Path(cache_dir),
+                    token=token,
+                )
+                evidence.commits = fetch_range_commits(evidence.bisect, crash, fetch_json)
+            except Exception as exc:
+                print(f"Warning: bisect failed, report has no regression range: {exc}")
 
     source_ref = version_sha(evidence.servo_version)
     if crash and source_ref:

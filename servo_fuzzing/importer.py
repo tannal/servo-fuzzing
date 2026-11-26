@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import os
 import shutil
 import tarfile
@@ -87,7 +88,11 @@ def unpack_archive_if_needed(source_path: Path, unpack_dir: Path) -> list[Path]:
     return search_dirs
 
 
-def find_import_testcases(search_paths: list[Path], max_tests: Optional[int] = None) -> list[Path]:
+def find_import_testcases(
+    search_paths: list[Path],
+    max_tests: Optional[int] = None,
+    dedupe_content: bool = True,
+) -> list[Path]:
     found: list[Path] = []
     seen: set[Path] = set()
 
@@ -113,6 +118,21 @@ def find_import_testcases(search_paths: list[Path], max_tests: Optional[int] = N
                     seen.add(resolved)
                     found.append(resolved)
 
+    # Prefer descriptive filenames over generic `repro.html` copies when deduplicating bytes.
+    found.sort(key=lambda path: (path.name.lower() == "repro.html", str(path)))
+    if dedupe_content:
+        unique_paths: list[Path] = []
+        seen_hashes: set[str] = set()
+        for path in found:
+            try:
+                digest = hashlib.sha256(path.read_bytes()).hexdigest()
+            except OSError:
+                continue
+            if digest in seen_hashes:
+                continue
+            seen_hashes.add(digest)
+            unique_paths.append(path)
+        found = unique_paths
     found.sort()
     if max_tests is not None and max_tests > 0:
         found = found[:max_tests]
@@ -126,13 +146,16 @@ def import_crashes(
     corpus_dir: Optional[Path] = None,
     output_dir: Optional[Path] = None,
     drafts_path: Optional[Path] = None,
-    timeout: float = 2.0,
+    timeout: float = 6.0,
     concurrency: int = 4,
     max_tests: Optional[int] = None,
     reduce: bool = True,
-    reduce_timeout: float = 2.0,
+    reduce_timeout: Optional[float] = None,
     fixed_history_path: Optional[Path] = None,
     lookup_github: bool = False,
+    attempts: int = 3,
+    reduce_max_seconds: Optional[float] = 120.0,
+    include_regressions: bool = False,
 ) -> dict[str, Any]:
     binary_path = Path(binary).resolve()
     if not binary_path.exists() or not os.access(binary_path, os.X_OK):
@@ -234,6 +257,8 @@ def import_crashes(
         else:
             print(f"{prefix} ERROR      : {name} ({res.error_message})")
 
+    effective_reduce_timeout = float(timeout) if reduce_timeout is None else float(reduce_timeout)
+
     summary = run_suite(
         binary=binary_path,
         testcases=testcases,
@@ -243,6 +268,7 @@ def import_crashes(
         signatures=signatures,
         fixed_signatures=fixed_signatures,
         on_result=on_result,
+        attempts=attempts,
     )
 
     write_artifacts(summary, output_dir=out_dir, servo_version=servo_version)
@@ -258,10 +284,12 @@ def import_crashes(
             corpus_out_dir=corpus_out,
             drafts_path=drafts_path,
             reduce_binary=binary_path if reduce else None,
-            reduce_timeout=reduce_timeout,
+            reduce_timeout=effective_reduce_timeout,
             servo_args=servo_args,
             fixed_history_path=history_path,
             lookup_github=lookup_github,
+            reduce_max_seconds=reduce_max_seconds,
+            include_regressions=include_regressions,
         )
 
     shutil.rmtree(unpack_dir, ignore_errors=True)

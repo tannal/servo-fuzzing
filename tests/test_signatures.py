@@ -248,6 +248,85 @@ class TestSignatures(unittest.TestCase):
             self.assertEqual(load_signatures(history_file), [])
             self.assertEqual(load_signatures(sigs_file), self.signatures)
 
+    def test_sync_draft_signatures_include_regressions_emits_draft(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            sigs_file = tmp / "rust-panic.json"
+            history_file = tmp / "fixed-history.json"
+            save_signatures(sigs_file, self.signatures)
+            save_signatures(history_file, [
+                {
+                    "id": "issue-46109",
+                    "message": "internal error: entered unreachable code: Found hoisted box with missing or non-BoxFragment.",
+                    "source_file": "components/layout/display_list/stacking_context.rs",
+                    "stack_frames": ["stacking_context"],
+                    "issue": "https://github.com/servo/servo/issues/46109",
+                }
+            ])
+
+            triage_dir = tmp / "triage"
+            c_dir = triage_dir / "new_crashes" / "test_1"
+            c_dir.mkdir(parents=True)
+            (c_dir / "test_1.html").write_text("<html>hoisted</html>")
+            (c_dir / "signature_draft.json").write_text(json.dumps({
+                "id": "stacking-context-hoisted-box-missing",
+                "message": "internal error: entered unreachable code: Found hoisted box with missing or non-BoxFragment.",
+                "source_file": "components/layout/display_list/stacking_context.rs",
+                "stack_frames": ["stacking_context"],
+                "issue": "https://github.com/servo/servo/issues/46109",
+            }))
+
+            corpus_dir = tmp / "corpus"
+            added = sync_draft_signatures(
+                triage_dir,
+                sigs_file,
+                corpus_out_dir=corpus_dir,
+                fixed_history_path=history_file,
+                include_regressions=True,
+            )
+            self.assertEqual(len(added), 1)
+            self.assertEqual(added[0]["id"], "issue-46109")
+            self.assertEqual(added[0]["issue"], "https://github.com/servo/servo/issues/46109")
+            self.assertTrue((corpus_dir / "issue-46109.html").is_file())
+            self.assertTrue((corpus_dir / "issue-46109.json").is_file())
+            self.assertEqual(load_signatures(triage_dir / "draft-signatures.json"), added)
+
+    def test_save_corpus_repro_skips_reduction_for_flaky_crash(self):
+        from unittest.mock import patch
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            sigs_file = tmp / "rust-panic.json"
+            save_signatures(sigs_file, [])
+            fake_bin = tmp / "servoshell"
+            fake_bin.write_text("#!/bin/sh\nexit 0\n")
+
+            triage_dir = tmp / "triage"
+            c_dir = triage_dir / "new_crashes" / "flaky_1"
+            c_dir.mkdir(parents=True)
+            (c_dir / "flaky_1.html").write_text("<html>flaky</html>")
+            (c_dir / "signature_draft.json").write_text(json.dumps({
+                "id": "flaky-panic",
+                "message": "flaky panic",
+                "source_file": "components/layout/flaky.rs",
+                "stack_frames": ["flaky_fn"],
+                "issue": "https://github.com/servo/servo/issues/TODO",
+            }))
+
+            corpus_dir = tmp / "corpus"
+            with (
+                patch("servo_fuzzing.signatures._probe_reproducibility", return_value=1),
+                patch("servo_fuzzing.reducer.reduce_delta_lines", side_effect=AssertionError("should not reduce")),
+            ):
+                added = sync_draft_signatures(
+                    triage_dir,
+                    sigs_file,
+                    corpus_out_dir=corpus_dir,
+                    reduce_binary=fake_bin,
+                )
+            self.assertEqual(len(added), 1)
+            self.assertEqual((corpus_dir / "flaky-panic.html").read_text(), "<html>flaky</html>")
+
 
 class TestDraftsAcrossRuns(unittest.TestCase):
     """`draft-signatures.json` describes one run; the reproducer corpus is shared between runs."""

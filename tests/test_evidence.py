@@ -4,6 +4,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from servo_fuzzing.bisect import BisectResult, Nightly
 from servo_fuzzing.evidence import (
@@ -12,6 +13,7 @@ from servo_fuzzing.evidence import (
     fetch_source_snippet,
     filled_analysis,
     frame_source_hints,
+    gather_evidence,
     render_issue,
     score_commit,
     trimmed_backtrace,
@@ -210,6 +212,44 @@ class TestEvidence(unittest.TestCase):
             issue = write_evidence_pack(evidence, tmp / "pack").read_text()
             self.assertIn("Crash in crash.html", issue)
             self.assertIsNone(json.loads((tmp / "pack" / "context.json").read_text())["crash"])
+
+    def test_gather_evidence_skips_bisect_on_intermittent_crash_and_labels_issue(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            tc = tmp / "flaky.html"
+            tc.write_text("<p>race</p>")
+            binary = tmp / "servoshell"
+            binary.write_text("#!/bin/sh\nexit 0\n")
+
+            crash_res = TestResult(
+                testcase=tc,
+                status=TestStatus.NEW_CRASH,
+                exit_code=101,
+                combined_output=OUTPUT,
+                crash_info=make_crash(),
+            )
+            pass_res = TestResult(testcase=tc, status=TestStatus.PASS, exit_code=0, combined_output="")
+
+            with (
+                patch("servo_fuzzing.evidence.run_single_test", side_effect=[crash_res, pass_res, pass_res]),
+                patch("servo_fuzzing.runner.get_servo_version", return_value="Servo 0.8.0-abc1234"),
+                patch("servo_fuzzing.evidence.run_bisect", side_effect=AssertionError("should skip bisect")),
+                patch("servo_fuzzing.evidence.github_fetchers", return_value=(lambda _u: {}, lambda _u: "")),
+            ):
+                ev = gather_evidence(
+                    binary=binary,
+                    testcase=tc,
+                    servo_args=["-xfz"],
+                    attempts=3,
+                    bisect=True,
+                )
+            self.assertIsNotNone(ev)
+            assert ev is not None
+            self.assertIsNone(ev.bisect)
+            self.assertEqual(ev.crashes, 1)
+            rendered = render_issue(ev)
+            self.assertIn("1/3 runs (intermittent", rendered)
+            self.assertIn("servo-fuzzing reproduce", rendered)
 
 
 if __name__ == "__main__":

@@ -176,6 +176,38 @@ def write_artifacts(summary: SuiteSummary, output_dir: Path, servo_version: str 
     unique_new = _group_unique_crashes(summary.results, TestStatus.NEW_CRASH)
     unique_reg = _group_unique_crashes(summary.results, TestStatus.REGRESSION)
 
+    actionable = unique_new + unique_reg
+    crash_dirs: dict[int, str] = {}
+    used_dirs: set[str] = set()
+    for r, _count in actionable:
+        base = r.testcase.stem
+        if base in used_dirs:
+            base = r.matched_signature_id or (generate_descriptive_name(r.crash_info) if r.crash_info else r.testcase.stem)
+        dir_name = base
+        suffix = 2
+        while dir_name in used_dirs:
+            dir_name = f"{base}-{suffix}"
+            suffix += 1
+        used_dirs.add(dir_name)
+        crash_dirs[id(r)] = dir_name
+
+    summary_results = []
+    for r in summary.results:
+        entry: dict[str, Any] = {
+            "testcase": str(r.testcase),
+            "status": r.status.value,
+            "exit_code": r.exit_code,
+            "duration": r.duration,
+            "matched_signature": r.matched_signature_id,
+            "issue": r.matched_issue,
+            "panic_message": r.crash_info.message if r.crash_info else None,
+            "source_file": r.crash_info.source_file if r.crash_info else None,
+            "line": r.crash_info.line if r.crash_info else None,
+        }
+        if id(r) in crash_dirs:
+            entry["crash_dir"] = crash_dirs[id(r)]
+        summary_results.append(entry)
+
     summary_data = {
         "total": summary.total,
         "passed": summary.passed,
@@ -188,20 +220,7 @@ def write_artifacts(summary: SuiteSummary, output_dir: Path, servo_version: str 
         "errors": summary.errors,
         "duration": summary.duration,
         "success": summary.is_success,
-        "results": [
-            {
-                "testcase": str(r.testcase),
-                "status": r.status.value,
-                "exit_code": r.exit_code,
-                "duration": r.duration,
-                "matched_signature": r.matched_signature_id,
-                "issue": r.matched_issue,
-                "panic_message": r.crash_info.message if r.crash_info else None,
-                "source_file": r.crash_info.source_file if r.crash_info else None,
-                "line": r.crash_info.line if r.crash_info else None,
-            }
-            for r in summary.results
-        ],
+        "results": summary_results,
     }
     (output_dir / "summary.json").write_text(json.dumps(summary_data, indent=2), encoding="utf-8")
 
@@ -276,12 +295,11 @@ def write_artifacts(summary: SuiteSummary, output_dir: Path, servo_version: str 
 
     (output_dir / "report.md").write_text("\n".join(md_lines), encoding="utf-8")
 
-    actionable = unique_new + unique_reg
     if actionable:
         new_crashes_dir = output_dir / "new_crashes"
         new_crashes_dir.mkdir(parents=True, exist_ok=True)
         for r, _count in actionable:
-            case_dir = new_crashes_dir / r.testcase.stem
+            case_dir = new_crashes_dir / crash_dirs[id(r)]
             case_dir.mkdir(parents=True, exist_ok=True)
             shutil.copy2(r.testcase, case_dir / r.testcase.name)
             (case_dir / "output.log").write_text(r.combined_output, encoding="utf-8")

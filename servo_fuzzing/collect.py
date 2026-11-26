@@ -19,7 +19,10 @@ def collect_panics(run_dir: Path, corpus: Path) -> int:
         if result.get("status") not in ("NEW_CRASH", "REGRESSION"):
             continue
         name = Path(result["testcase"]).name
-        source = run_dir / "new_crashes" / Path(name).stem
+        crash_dir_name = result.get("crash_dir") or Path(name).stem
+        source = run_dir / "new_crashes" / crash_dir_name
+        if not source.is_dir():
+            source = run_dir / "new_crashes" / Path(name).stem
         signature = source / "signature_draft.json"
         if not signature.is_file():
             continue
@@ -31,6 +34,14 @@ def collect_panics(run_dir: Path, corpus: Path) -> int:
             continue
 
         testcase = source / name
+        if not testcase.is_file():
+            htmls = sorted(
+                p for p in source.iterdir()
+                if p.is_file() and p.suffix.lower() in (".html", ".htm")
+            )
+            if not htmls:
+                continue
+            testcase = htmls[0]
         data = testcase.read_bytes()
         digest = hashlib.sha256(data).hexdigest()
         descriptive_id = signature_data.get("id") or generate_descriptive_name(

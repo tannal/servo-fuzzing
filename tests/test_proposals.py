@@ -251,6 +251,46 @@ class TestProposals(unittest.TestCase):
         self.assertIn("labels", calls[0])
         self.assertNotIn("labels", calls[1])
 
+    def test_propose_panics_marks_fixed_history_regression_even_for_fork_repo(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            drafts = tmp / "drafts.json"
+            corpus = tmp / "corpus"
+            out_dir = tmp / "proposals"
+            history = tmp / "fixed-history.json"
+            corpus.mkdir()
+
+            msg = "index out of bounds: the len is 7 but the index is 15"
+            src = "components/shared/paint/display_list.rs"
+            save_signatures(history, [{
+                "id": "issue-42215",
+                "message": msg,
+                "source_file": src,
+                "stack_frames": ["display_list::build"],
+                "issue": "https://github.com/servo/servo/issues/42215",
+            }])
+            save_signatures(drafts, [{
+                "id": "issue-42215",
+                "message": msg,
+                "source_file": src,
+                "stack_frames": ["display_list::build"],
+                "issue": "https://github.com/servo/servo/issues/42215",
+            }])
+            (corpus / "issue-42215.html").write_text("<p>dl</p>")
+
+            proposals = propose_panics(
+                drafts_path=drafts,
+                corpus_dir=corpus,
+                out_dir=out_dir,
+                gather=lambda tc, regresses_issue=None: _make_evidence(tc, msg, src, regresses_issue=regresses_issue),
+                target_repo="tannal/servo-fuzzing",
+                find_existing=lambda _m, _s: None,
+                fixed_history_path=history,
+            )
+            self.assertEqual(len(proposals), 1)
+            self.assertEqual(proposals[0]["status"], "regression")
+            self.assertEqual(proposals[0]["regresses_issue"], "https://github.com/servo/servo/issues/42215")
+
 
 if __name__ == "__main__":
     unittest.main()

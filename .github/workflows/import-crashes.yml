@@ -26,12 +26,17 @@ on:
       timeout:
         description: 'Per-test timeout in seconds'
         required: false
-        default: '2.0'
+        default: '6.0'
         type: string
       jobs:
         description: 'Parallel execution workers'
         required: false
-        default: '4'
+        default: '2'
+        type: string
+      attempts:
+        description: 'Max triage attempts per suspect testcase (retries non-crashing runs)'
+        required: false
+        default: '3'
         type: string
       reduce:
         description: 'Auto-minimize unique panics via delta debugging'
@@ -149,9 +154,10 @@ jobs:
             REDUCE_OPT="--no-reduce"
           fi
 
-          TIMEOUT_VAL="${{ inputs.timeout || '2.0' }}"
-          JOBS_VAL="${{ inputs.jobs || '4' }}"
+          TIMEOUT_VAL="${{ inputs.timeout || '6.0' }}"
+          JOBS_VAL="${{ inputs.jobs || '2' }}"
           MAX_VAL="${{ inputs.max_tests || '5000' }}"
+          ATTEMPTS_VAL="${{ inputs.attempts || '3' }}"
 
           servo-fuzzing import target/import \
             --binary ./servo/servoshell \
@@ -159,8 +165,12 @@ jobs:
             --corpus target/panic-corpus \
             --output target/triage \
             --timeout "$TIMEOUT_VAL" \
+            --attempts "$ATTEMPTS_VAL" \
             --jobs "$JOBS_VAL" \
             --max-tests "$MAX_VAL" \
+            --reduce-timeout "$TIMEOUT_VAL" \
+            --reduce-max-seconds 120 \
+            --include-regressions \
             --lookup-github \
             $REDUCE_OPT
 
@@ -171,12 +181,17 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TARGET_REPO: ${{ vars.UPSTREAM_ISSUE_REPO || github.repository }}
         run: |
+          TIMEOUT_VAL="${{ inputs.timeout || '6.0' }}"
+          ATTEMPTS_VAL="${{ inputs.attempts || '3' }}"
           servo-fuzzing propose \
             --drafts target/triage/draft-signatures.json \
             --corpus target/panic-corpus \
             --binary ./servo/servoshell \
             --output target/proposals \
             --repo "$TARGET_REPO" \
+            --history signatures/fixed-history.json \
+            --timeout "$TIMEOUT_VAL" \
+            --attempts "$ATTEMPTS_VAL" \
             --bisect
           if [ -f "target/proposals/proposals.json" ]; then
             echo "found=true" >> "$GITHUB_OUTPUT"
