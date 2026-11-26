@@ -78,6 +78,28 @@
       "source_file": "style/servo/attr.rs",
       "stack_frames": [],
       "issue": "https://github.com/servo/servo/issues/49527"
+    },
+    {
+      "id": "node-must-always-editable",
+      "message": "Must always be editable",
+      "source_file": "components/script/dom/execcommand/contenteditable/node.rs",
+      "stack_frames": [
+        "<script::dom::node::node::Node>::is_collapsed_line_break",
+        "<script::dom::node::node::Node>::is_collapsed_block_prop",
+        "<script::dom::execcommand::basecommand::CommandName>::execute"
+      ],
+      "issue": "https://github.com/tannal/servo-fuzzing/issues/19"
+    },
+    {
+      "id": "storage-refcell-already-mutably",
+      "message": "RefCell already mutably borrowed",
+      "source_file": "components/script/dom/element/attributes/storage.rs",
+      "stack_frames": [
+        "<script::dom::element::attributes::storage::AttributeStorage as mozjs_sys::trace::Traceable>::trace",
+        "<script::dom::html::htmlelement::HTMLElement as mozjs_sys::trace::Traceable>::trace",
+        "script_bindings::codegen::GenericBindings::HTMLElementBinding::HTMLElement_Binding::_trace::<script::dom::bindings::codegen::DomTypeHolder::DomTypeHolder>"
+      ],
+      "issue": "https://github.com/tannal/servo-fuzzing/issues/27"
     }
   ]
 }
