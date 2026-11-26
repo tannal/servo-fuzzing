@@ -78,6 +78,17 @@
       "source_file": "style/servo/attr.rs",
       "stack_frames": [],
       "issue": "https://github.com/servo/servo/issues/49527"
+    },
+    {
+      "id": "node-must-always-editable",
+      "message": "Must always be editable",
+      "source_file": "components/script/dom/execcommand/contenteditable/node.rs",
+      "stack_frames": [
+        "<script::dom::node::node::Node>::is_collapsed_line_break",
+        "<script::dom::node::node::Node>::is_collapsed_block_prop",
+        "<script::dom::execcommand::basecommand::CommandName>::execute"
+      ],
+      "issue": "https://github.com/tannal/servo-fuzzing/issues/19"
     }
   ]
 }
