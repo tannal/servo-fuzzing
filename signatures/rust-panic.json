@@ -78,6 +78,27 @@
       "source_file": "style/servo/attr.rs",
       "stack_frames": [],
       "issue": "https://github.com/servo/servo/issues/49527"
+    },
+    {
+      "id": "euclid-point-unwrap-none",
+      "message": "called `Option::unwrap()` on a `None` value",
+      "source_file": "euclid-0.22.14/src/point.rs",
+      "stack_frames": [
+        "std::sys::backtrace::__rust_end_short_backtrace::<std::panicking::panic_handler::{closure#0}, !>",
+        "core::option::unwrap_failed"
+      ],
+      "issue": "https://github.com/tannal/servo-fuzzing/issues/26"
+    },
+    {
+      "id": "storage-refcell-already-mutably",
+      "message": "RefCell already mutably borrowed",
+      "source_file": "components/script/dom/element/attributes/storage.rs",
+      "stack_frames": [
+        "<script::dom::element::attributes::storage::AttributeStorage as mozjs_sys::trace::Traceable>::trace",
+        "<script::dom::html::htmlelement::HTMLElement as mozjs_sys::trace::Traceable>::trace",
+        "script_bindings::codegen::GenericBindings::HTMLElementBinding::HTMLElement_Binding::_trace::<script::dom::bindings::codegen::DomTypeHolder::DomTypeHolder>"
+      ],
+      "issue": "https://github.com/tannal/servo-fuzzing/issues/27"
     }
   ]
 }
