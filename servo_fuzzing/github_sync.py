@@ -28,6 +28,21 @@ def _github_headers(token: Optional[str] = None, user_agent: str = "servo-fuzzin
     return headers
 
 
+def _fetch_search_page(url: str, headers: dict[str, str], timeout: int = 30) -> dict[str, Any]:
+    request = urllib.request.Request(url, headers=headers)
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        data = json.loads(response.read().decode("utf-8"))
+
+    if (
+        not isinstance(data, dict)
+        or not isinstance(data.get("items"), list)
+        or not isinstance(data.get("total_count"), int)
+        or data.get("incomplete_results") is not False
+    ):
+        raise ValueError("Invalid or incomplete GitHub issue-search response")
+    return data
+
+
 def fetch_fuzzing_issues(
     repo: str = "servo/servo",
     state: str = "open",
@@ -49,17 +64,14 @@ def fetch_fuzzing_issues(
         })
         url = f"https://api.github.com/search/issues?{query}"
         print(f"Fetching {url}")
-        request = urllib.request.Request(url, headers=headers)
-        with urllib.request.urlopen(request, timeout=30) as response:
-            data = json.loads(response.read().decode("utf-8"))
-
-        if (
-            not isinstance(data, dict)
-            or not isinstance(data.get("items"), list)
-            or not isinstance(data.get("total_count"), int)
-            or data.get("incomplete_results") is not False
-        ):
-            raise ValueError("Invalid or incomplete GitHub issue-search response")
+        data = _fetch_search_page(url, headers)
+        if page == 1 and data["total_count"] == 0 and "Authorization" in headers:
+            print(
+                f"Authenticated GitHub search returned 0 issues for {repo}; "
+                "retrying without Authorization header."
+            )
+            headers = {k: v for k, v in headers.items() if k != "Authorization"}
+            data = _fetch_search_page(url, headers)
 
         if data["total_count"] > 1000:
             raise ValueError("Issue search exceeds GitHub's 1000-result limit")
@@ -256,11 +268,17 @@ def find_upstream_issue(
     phrase = _build_issue_search_phrase(message, source_file)
     query = urlencode({"q": f"repo:{repo} is:issue {phrase}", "per_page": 10})
     url = f"https://api.github.com/search/issues?{query}"
-    req = urllib.request.Request(url, headers=_github_headers(token=token, user_agent="servo-fuzzing-lookup"))
+    headers = _github_headers(token=token, user_agent="servo-fuzzing-lookup")
+    req = urllib.request.Request(url, headers=headers)
 
     try:
         with urllib.request.urlopen(req, timeout=10) as resp:
             data = json.loads(resp.read().decode("utf-8"))
+        if data.get("total_count") == 0 and "Authorization" in headers:
+            unauth_headers = {k: v for k, v in headers.items() if k != "Authorization"}
+            req = urllib.request.Request(url, headers=unauth_headers)
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
     except Exception:
         return None
 

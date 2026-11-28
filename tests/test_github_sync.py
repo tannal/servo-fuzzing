@@ -1,5 +1,6 @@
 import io
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -9,6 +10,7 @@ from urllib.parse import parse_qs, urlparse
 
 from servo_fuzzing.github_sync import (
     fetch_fuzzing_issues,
+    find_upstream_issue,
     parse_issue_to_signature,
     sync_signatures_from_github,
 )
@@ -72,6 +74,51 @@ class SyncTests(unittest.TestCase):
         with patch("servo_fuzzing.github_sync.urllib.request.urlopen", return_value=self.response([], 1)):
             with self.assertRaises(ValueError):
                 fetch_fuzzing_issues()
+
+    def test_scoped_token_zero_results_retries_unauthenticated(self):
+        with patch("servo_fuzzing.github_sync.urllib.request.urlopen", side_effect=[
+            self.response([], 0),
+            self.response([{"number": 1}], 2),
+            self.response([{"number": 2}], 2),
+        ]) as mock_urlopen:
+            issues = fetch_fuzzing_issues(token="ghs_scoped_token", per_page=1)
+
+        self.assertEqual([i["number"] for i in issues], [1, 2])
+        self.assertEqual(mock_urlopen.call_count, 3)
+        first_req = mock_urlopen.call_args_list[0].args[0]
+        retry_req = mock_urlopen.call_args_list[1].args[0]
+        page2_req = mock_urlopen.call_args_list[2].args[0]
+        self.assertEqual(first_req.get_header("Authorization"), "Bearer ghs_scoped_token")
+        self.assertIsNone(retry_req.get_header("Authorization"))
+        self.assertIsNone(page2_req.get_header("Authorization"))
+
+    def test_unauthenticated_zero_results_does_not_retry(self):
+        with patch.dict(os.environ, {"GITHUB_TOKEN": "", "GH_TOKEN": ""}):
+            with patch("servo_fuzzing.github_sync.urllib.request.urlopen", return_value=self.response([], 0)) as mock_urlopen:
+                issues = fetch_fuzzing_issues()
+        self.assertEqual(issues, [])
+        self.assertEqual(mock_urlopen.call_count, 1)
+
+    def test_find_upstream_issue_retries_unauthenticated_on_zero_results(self):
+        matching = issue(
+            49411,
+            PANIC_WITH_BACKTRACE,
+            title="assertion failed: parent_proxy.currently_active().is_some()",
+        )
+        with patch("servo_fuzzing.github_sync.urllib.request.urlopen", side_effect=[
+            self.response([], 0),
+            self.response([matching], 1),
+        ]) as mock_urlopen:
+            found = find_upstream_issue(
+                "assertion failed: parent_proxy.currently_active().is_some()",
+                "components/script/dom/window/windowproxy.rs",
+                token="ghs_scoped_token",
+            )
+        self.assertIsNotNone(found)
+        self.assertEqual(found["number"], "49411")
+        self.assertEqual(mock_urlopen.call_count, 2)
+        self.assertEqual(mock_urlopen.call_args_list[0].args[0].get_header("Authorization"), "Bearer ghs_scoped_token")
+        self.assertIsNone(mock_urlopen.call_args_list[1].args[0].get_header("Authorization"))
 
     def test_signature_frames_skip_panic_plumbing(self):
         sig = parse_issue_to_signature(issue(49411, PANIC_WITH_BACKTRACE))

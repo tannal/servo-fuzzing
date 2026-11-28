@@ -26,8 +26,10 @@ jobs:
         run: pip install -e .
 
       - name: Sync Signatures from servo/servo
+        # Do not pass the repo-scoped Actions GITHUB_TOKEN to cross-repo /search/issues queries.
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ""
+          GH_TOKEN: ""
         run: |
           servo-fuzzing sync-issues \
             --signatures signatures/rust-panic.json \
