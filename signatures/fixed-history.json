@@ -1471,6 +1471,26 @@
       "source_file": "components/script/dom/console.rs",
       "stack_frames": [],
       "issue": "https://github.com/servo/servo/issues/49522"
+    },
+    {
+      "id": "issue-49996",
+      "message": "Not a block formattign context",
+      "source_file": "components/layout/formatting_contexts.rs",
+      "stack_frames": [
+        "<layout::formatting_contexts::IndependentFormattingContext>::layout_without_caching",
+        "<layout::formatting_contexts::IndependentFormattingContext>::layout_and_is_cached"
+      ],
+      "issue": "https://github.com/servo/servo/issues/49996"
+    },
+    {
+      "id": "issue-49997",
+      "message": "internal error: entered unreachable code: Found hoisted box with missing or non-BoxFragment.",
+      "source_file": "components/layout/display_list/stacking_context.rs",
+      "stack_frames": [
+        "| system-certs = true",
+        "<layout::fragment_tree::fragment::Fragment>::build_stacking_context_tree"
+      ],
+      "issue": "https://github.com/servo/servo/issues/49997"
     }
   ]
 }
